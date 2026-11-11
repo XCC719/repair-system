@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#176650">
+  <title>報修登記｜服務工作台</title>
+  <link rel="stylesheet" href="./style.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script defer src="./config.js"></script>
+  <script defer src="./app.js"></script>
+</head>
+<body>
+  <header class="topbar"><div class="brand"><span class="brand-icon" aria-hidden="true">＋</span>服務工作台<span class="demo">示範系統</span></div></header>
+  <main>
+    <div class="intro"><p class="eyebrow">REPAIR SERVICE</p><h1>讓問題被看見，<br>讓日常更順暢。</h1><p>設備故障、網路異常或環境問題，都從這裡登記。</p></div>
+    <section class="panel" aria-labelledby="form-title">
+      <div class="section-heading"><span class="step">01</span><div><h2 id="form-title">報修登記</h2><p>請填寫以下資訊，協助我們了解問題。所有欄位皆為必填。</p></div></div>
+      <form id="repair-form">
+        <div class="grid"><label>報修人<input name="reporter_name" autocomplete="name" required maxlength="100" placeholder="例如：陳小明（虛構）"></label><label>地點或部門<input name="location" required maxlength="200" placeholder="例如：示範辦公室 2 樓"></label></div>
+        <label>類別<select name="category" required><option value="" disabled selected>請選擇問題類別</option><option>設備</option><option>網路</option><option>環境</option><option>其他</option></select></label>
+        <label>問題說明<textarea name="description" rows="5" required maxlength="5000" placeholder="請描述發生的狀況、位置及影響範圍…"></textarea></label>
+        <fieldset><legend>緊急程度</legend><div class="urgency-options"><label><input type="radio" name="urgency" value="低" required><span>低 <small>可安排處理</small></span></label><label><input type="radio" name="urgency" value="中" checked><span>中 <small>影響部分作業</small></span></label><label><input type="radio" name="urgency" value="高"><span>高 <small>需要儘速協助</small></span></label></div></fieldset>
+        <div class="form-footer"><p>此為公開示範，請使用虛構姓名與地點，勿填寫敏感資訊。</p><button id="submit-button" type="submit">送出報修 <span aria-hidden="true">↗</span></button></div>
+        <p id="form-message" class="message" role="status" aria-live="polite" hidden></p>
+      </form>
+    </section>
+    <section class="panel requests-panel" aria-labelledby="list-title"><div class="list-heading"><div class="section-heading"><span class="step">02</span><div><h2 id="list-title">最近報修</h2><p>最近 20 筆登記，依時間由新到舊排列。</p></div></div><button id="refresh-button" class="secondary" type="button">重新整理</button></div><p id="list-message" class="message" role="status" aria-live="polite">正在載入報修紀錄…</p><ul id="request-list" class="request-list" aria-label="最近報修紀錄"></ul></section>
+    <footer>服務工作台 <span>／</span> 一筆登記，開始改善。</footer>
+  </main>
+</body>
+</html>

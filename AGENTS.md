@@ -21,3 +21,9 @@
 ## 提交與提取要求
 
 目前尚無 Git 提交紀錄。請使用簡短且明確描述動作的提交標題，例如 `記錄報修欄位`。在提取要求中，請說明變更內容並附上相關議題的連結。若表單或清單的畫面有變更，請附上截圖。
+
+## 前端元件與驗證
+
+- 根目錄 `index.html`、`style.css`、`app.js`、`config.js` 為無建置的靜態前端；`docs/mobile-preview.png` 為虛構資料的手機預覽。
+- 本機執行 `python3 -m http.server 8000`，開啟 http://localhost:8000；語法檢查使用 `node --check app.js`、`node --check config.js`。
+- 瀏覽器需驗證表單成功／失敗、最近清單、登記時間及手機寬度；正式資料庫連線或 RLS 無法驗證時，須在 PR 註明限制。
