@@ -4,6 +4,8 @@
 
 [報修欄位表（含範例資料）](文件/報修欄位表.xlsx)
 
+[報修系統操作說明（Word）](文件/報修系統操作說明.docx)
+
 ## 網頁前端
 
 根目錄 `index.html` 為入口，`style.css` 提供手機與桌面樣式，`app.js` 負責驗證、新增及讀取最近 20 筆報修，`config.js` 放置 Supabase URL 與公開 publishable key。supabase-js v2 由 jsDelivr CDN 載入，無建置步驟。
