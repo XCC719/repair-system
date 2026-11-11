@@ -6,6 +6,9 @@
   const formMessage = document.querySelector('#form-message');
   const listMessage = document.querySelector('#list-message');
   const list = document.querySelector('#request-list');
+  const filterButtons = document.querySelectorAll('[data-urgency-filter]');
+  let requests = [];
+  let selectedUrgency = '全部';
   let client;
   let submitting = false;
   let loading = false;
@@ -27,6 +30,33 @@
       hour: '2-digit', minute: '2-digit', hour12: false
     }).format(date) + '（台北時間）';
   };
+  function renderRequests() {
+    const visibleRequests = selectedUrgency === '全部' ? requests
+      : requests.filter(request => request.urgency === selectedUrgency);
+    const cards = visibleRequests.map(request => {
+      const card = element('li', 'request-card', '');
+      const top = element('div', 'request-top', '');
+      top.append(element('h3', '', request.location), element('span', 'badge', request.category),
+        element('span', `badge ${request.urgency === '高' ? 'high' : ''}`, `緊急：${request.urgency}`),
+        element('span', 'badge', request.status));
+      card.append(top, element('p', 'request-description', request.description),
+        element('div', 'request-meta', `${request.reporter_name} · ${formatTime(request.created_at)}`));
+      return card;
+    });
+    list.replaceChildren(...cards);
+    showMessage(listMessage, cards.length ? '' : requests.length
+      ? `目前沒有緊急程度為「${selectedUrgency}」的報修紀錄。`
+      : '目前沒有報修紀錄，歡迎登記第一筆報修。');
+  }
+  filterButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      selectedUrgency = button.dataset.urgencyFilter;
+      filterButtons.forEach(filter => {
+        filter.setAttribute('aria-pressed', String(filter === button));
+      });
+      renderRequests();
+    });
+  });
   async function loadRequests() {
     if (loading) return;
     loading = true;
@@ -38,18 +68,8 @@
         .select('id,reporter_name,location,category,description,urgency,status,created_at')
         .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(20);
       if (error) throw error;
-      const cards = (data || []).map(request => {
-        const card = element('li', 'request-card', '');
-        const top = element('div', 'request-top', '');
-        top.append(element('h3', '', request.location), element('span', 'badge', request.category),
-          element('span', `badge ${request.urgency === '高' ? 'high' : ''}`, `緊急：${request.urgency}`),
-          element('span', 'badge', request.status));
-        card.append(top, element('p', 'request-description', request.description),
-          element('div', 'request-meta', `${request.reporter_name} · ${formatTime(request.created_at)}`));
-        return card;
-      });
-      list.replaceChildren(...cards);
-      showMessage(listMessage, cards.length ? '' : '目前沒有報修紀錄，歡迎登記第一筆報修。');
+      requests = data || [];
+      renderRequests();
     } catch (error) {
       showMessage(listMessage, `無法載入清單，請按「重新整理」重試。${list.children.length ? '下方保留上次載入的紀錄。' : ''} 錯誤：${error.message || '連線失敗'}`, 'error');
     } finally {
