@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#176650">
   <title>報修登記｜服務工作台</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="報修登記">
+  <script defer src="./pwa.js"></script>
   <link rel="stylesheet" href="./style.css">
   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script defer src="./config.js"></script>
@@ -13,6 +18,7 @@
 <body>
   <header class="topbar"><div class="brand"><span class="brand-icon" aria-hidden="true">＋</span>服務工作台<span class="demo">示範系統</span></div></header>
   <main>
+    <div class="pwa-tools"><button id="install-button" class="secondary" type="button" hidden>安裝報修系統</button><p id="connection-message" class="message" role="status" hidden></p></div>
     <div class="intro"><p class="eyebrow">REPAIR SERVICE</p><h1>讓問題被看見，<br>讓日常更順暢。</h1><p>設備故障、網路異常或環境問題，都從這裡登記。</p></div>
     <section class="panel" aria-labelledby="form-title">
       <div class="section-heading"><span class="step">01</span><div><h2 id="form-title">報修登記</h2><p>請填寫以下資訊，協助我們了解問題。所有欄位皆為必填。</p></div></div>
