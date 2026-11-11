@@ -27,3 +27,9 @@
 - 根目錄 `index.html`、`style.css`、`app.js`、`config.js` 為無建置的靜態前端；`docs/mobile-preview.png` 為虛構資料的手機預覽。
 - 本機執行 `python3 -m http.server 8000`，開啟 http://localhost:8000；語法檢查使用 `node --check app.js`、`node --check config.js`。
 - 瀏覽器需驗證表單成功／失敗、最近清單、登記時間及手機寬度；正式資料庫連線或 RLS 無法驗證時，須在 PR 註明限制。
+
+## PWA 元件與驗證
+
+- `manifest.webmanifest`、`icons/` 為安裝資訊與圖示；`pwa.js` 負責安裝提示、連線狀態與 Service Worker 註冊，`sw.js` 僅快取靜態介面，不快取報修資料或 POST。
+- 修改快取檔案時遞增 `sw.js` 快取版本；新版等待舊頁面關閉後啟用，不強制重新載入表單。
+- `tests/pwa.cjs` 為 Playwright 瀏覽器回歸測試，自啟本機伺服器、使用虛構 API；執行 `node tests/pwa.cjs`（需 Playwright 與 Chromium，可設 `CHROMIUM_PATH`）。語法檢查另加 `node --check pwa.js`、`node --check sw.js`。
