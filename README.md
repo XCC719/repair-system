@@ -16,7 +16,7 @@
 
 ## 資料庫
 
-Supabase 須先執行 `supabase/schema.sql` 建立 `drink_orders` 資料表、權限與 RLS（任何人可新增、讀取，不可修改、刪除）。本檔僅產生，尚未在正式資料庫執行；舊的 `repair_requests` 表不受影響。請勿在前端放入 secret 或 service_role 金鑰。
+Supabase 須先執行 `supabase/schema.sql` 建立 `drink_orders` 資料表、權限與 RLS（任何人可新增、讀取，不可修改、刪除）。已於 2026-11-16 在正式專案執行；舊的 `repair_requests` 表不受影響。本檔為一次性建表，不可對已存在的資料表重複執行。請勿在前端放入 secret 或 service_role 金鑰。
 
 ## PWA 安裝與離線介面
 
@@ -27,4 +27,26 @@ Supabase 須先執行 `supabase/schema.sql` 建立 `drink_orders` 資料表、�
 
 ## 驗證
 
-執行 `node --check app.js`、`node --check pwa.js`、`node --check sw.js`，以及 `node tests/pwa.cjs`（需 Playwright 與 Chromium，可用 `CHROMIUM_PATH` 指定）。測試以虛構 API 驗證 manifest、Service Worker、離線重新載入、狀態篩選與合計金額、金額與數量驗證、送出欄位、錯誤提示及無自動補送。手機截圖見 [預覽](docs/mobile-preview.png) 與 [離線畫面](docs/pwa-mobile-offline.png)，皆為虛構資料。正式資料庫的新增、讀取及禁止修改／刪除規則尚未實際連線驗證。
+執行 `node --check app.js`、`node --check pwa.js`、`node --check sw.js`，以及 `node tests/pwa.cjs`（需 Playwright 與 Chromium，可用 `CHROMIUM_PATH` 指定）。測試以虛構 API 驗證 manifest、Service Worker、離線重新載入、狀態篩選與合計金額、金額與數量驗證、送出欄位、錯誤提示及無自動補送。手機截圖見 [預覽](docs/mobile-preview.png) 與 [離線畫面](docs/pwa-mobile-offline.png)，皆為虛構資料。實際 Android／iOS 安裝仍需在裝置上確認。
+
+### 正式資料庫驗證（2026-11-16）
+
+以前端相同的 publishable key 直接呼叫 Supabase REST API 測試 `drink_orders`：
+
+| # | 測試 | 預期 | 結果 |
+|---|---|---|---|
+| 1 | 讀取訂單 | 允許 | 通過（200） |
+| 2 | 新增訂單（含備註） | 允許 | 通過（201） |
+| 3 | 新增訂單（省略備註） | 允許 | 通過（201） |
+| 4 | 金額 0 | 拒絕 | 通過（`drink_orders_amount_check`） |
+| 5 | 數量 51 | 拒絕 | 通過（`drink_orders_quantity_check`） |
+| 6 | 不在清單的飲品 | 拒絕 | 通過（`drink_orders_drink_check`） |
+| 7 | 備註只有空白 | 拒絕 | 通過（`drink_orders_note_check`） |
+| 8 | 自行指定狀態「已完成」 | 拒絕 | 通過（無權限） |
+| 9 | 修改狀態 | 拒絕 | 通過（無權限） |
+| 10 | 刪除訂單 | 拒絕 | 通過（無權限） |
+
+- 新增的資料讀回正確，狀態自動為「待製作」、下單時間由資料庫產生；修改與刪除後再讀回，資料未變。
+- 以實際網頁連線正式資料庫，清單正確顯示訂單、小計、合計與台北時間（測試環境封鎖 jsDelivr，改以 npm 取得的同一 supabase-js 套件代替 CDN）。
+- 從網頁送出訂單僅以模擬 API 驗證，連線正式資料庫時只讀取，未從網頁送出。
+- 測試寫入兩筆點餐人為「自動測試（虛構）061911」的訂單；前端無法刪除，需由管理者在 Supabase 手動清除。
