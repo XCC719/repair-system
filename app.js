@@ -20,14 +20,8 @@
   const summaryTotal = document.querySelector('#summary-total');
   const summaryCount = document.querySelector('#summary-count');
   const summaryNo = document.querySelector('#summary-no');
-  // 訂單編號：台北日期 YYMMDD-4 碼英數（不含 I、O），格式須與資料庫 drink_orders_order_no_check 一致。
-  const ORDER_NO_CHARS = '0123456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-  const newOrderNo = () => {
-    const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: '2-digit', month: '2-digit', day: '2-digit' })
-      .format(new Date()).replace(/\D/g, '');
-    const random = crypto.getRandomValues(new Uint32Array(4));
-    return `${date}-${Array.from(random, value => ORDER_NO_CHARS[value % ORDER_NO_CHARS.length]).join('')}`;
-  };
+  // 訂單編號（台北日期 YYMMDD-4 碼流水號，例如 261116-0001）由資料庫 place_order 函式產生。
+  const ORDER_NO_PENDING = '送出後產生';
   const LIST_LIMIT = 50;
   const summaryMessage = document.querySelector('#summary-message');
   const summaryBack = document.querySelector('#summary-back');
@@ -171,6 +165,7 @@
   // ---- 多杯點餐：已點飲品暫存於本頁記憶體，不寫入瀏覽器儲存空間 ----
   let cart = [];
   let pendingItems = [];
+  let pendingCustomer = '';
   const ITEM_FIELDS = ['drink', 'amount', 'quantity', 'note'];
   const lineTotal = item => item.amount * item.quantity;
   const sumOf = items => items.reduce((sum, item) => sum + lineTotal(item), 0);
@@ -278,10 +273,10 @@
       if (!item) return;
       items.push(item);
     }
-    // 每次開啟確認頁產生新編號；在確認頁內重新送出時沿用同一編號。
-    const orderNo = newOrderNo();
-    pendingItems = items.map(item => ({ order_no: orderNo, customer_name: customerName, ...item }));
-    summaryNo.textContent = orderNo;
+    pendingCustomer = customerName;
+    pendingItems = items;
+    summaryNo.textContent = ORDER_NO_PENDING;
+    summaryNo.classList.add('pending');
     summaryCustomer.textContent = `點餐人：${customerName}`;
     summaryList.replaceChildren(...pendingItems.map((item, index) => {
       const row = element('li', 'summary-item', '');
@@ -315,15 +310,21 @@
     showMessage(summaryMessage, '正在送出訂單…');
     const items = pendingItems;
     try {
-      // 一次送出整張訂單；資料庫以單一指令新增，全部成功或全部失敗。
-      const { error } = await client.from('drink_orders').insert(items);
+      // 由資料庫 place_order 在同一交易內取得當日流水號並新增整張訂單，全部成功或全部失敗。
+      const { data: orderNo, error } = await client.rpc('place_order', {
+        p_customer_name: pendingCustomer,
+        p_items: items.map(({ drink, sugar, ice, amount, quantity, note }) => ({ drink, sugar, ice, amount, quantity, note }))
+      });
       if (error) throw error;
+      if (typeof orderNo !== 'string' || !orderNo) throw new Error('未取得訂單編號，請重新整理清單確認是否已下單。');
+      summaryNo.textContent = orderNo;
+      summaryNo.classList.remove('pending');
       dialog.close();
       cart = [];
       pendingItems = [];
       form.reset();
       updateSubtotal();
-      showMessage(formMessage, `訂單已成功送出！訂單編號 ${items[0].order_no}，共 ${items.length} 項、${cupsOf(items)} 杯，合計 ${money(sumOf(items))}。`, 'success');
+      showMessage(formMessage, `訂單已成功送出！訂單編號 ${orderNo}，共 ${items.length} 項、${cupsOf(items)} 杯，合計 ${money(sumOf(items))}。`, 'success');
       await loadOrders();
     } catch (error) {
       showMessage(summaryMessage, `送出失敗，已點內容都保留。請確認連線後重試；若連線中斷，請先關閉此視窗並重新整理清單確認是否已下單。錯誤：${error.message || '連線失敗'}`, 'error');
