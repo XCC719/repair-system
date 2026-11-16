@@ -122,14 +122,14 @@ const server = http.createServer((req, res) => {
     assert.match(await page.locator('#subtotal').innerText(), /請輸入金額與數量/);
     await page.locator('[name=customer_name]').fill('示範使用者（虛構）');
     await page.locator('[name=drink]').fill('  四季春青茶  ');
-    await page.locator('[value=熱]').check();
+    await page.locator('[value=溫]').check();
     await page.locator('[value=無糖]').check();
     await page.locator('[name=amount]').fill('80');
     await page.locator('[name=note]').fill('  燕麥奶  ');
     await page.locator('#submit-button').click();
     await page.waitForFunction(() => document.querySelector('#form-message').textContent.includes('成功送出') && !document.querySelector('[name=customer_name]').value);
     assert.equal(writes, 2);
-    assert.deepEqual(lastPayload, { customer_name: '示範使用者（虛構）', drink: '四季春青茶', sugar: '無糖', ice: '熱', amount: 80, quantity: 1, note: '燕麥奶' });
+    assert.deepEqual(lastPayload, { customer_name: '示範使用者（虛構）', drink: '四季春青茶', sugar: '無糖', ice: '溫', amount: 80, quantity: 1, note: '燕麥奶' });
     // Other applications' caches must survive this worker's activation.
     await page.evaluate(async () => {
       const cache = await caches.open('unrelated-app');

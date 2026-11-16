@@ -45,7 +45,7 @@ CREATE TABLE public.drink_orders (
     CONSTRAINT drink_orders_sugar_check
         CHECK (sugar IN ('無糖', '微糖', '半糖', '少糖', '全糖')),
     CONSTRAINT drink_orders_ice_check
-        CHECK (ice IN ('去冰', '微冰', '少冰', '正常冰', '熱')),
+        CHECK (ice IN ('去冰', '微冰', '少冰', '正常冰', '溫', '熱')),
     CONSTRAINT drink_orders_status_check
         CHECK (status IN ('待製作', '製作中', '已完成'))
 );
