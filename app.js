@@ -19,6 +19,16 @@
   const summaryList = document.querySelector('#summary-list');
   const summaryTotal = document.querySelector('#summary-total');
   const summaryCount = document.querySelector('#summary-count');
+  const summaryNo = document.querySelector('#summary-no');
+  // 訂單編號：台北日期 YYMMDD-4 碼英數（不含 I、O），格式須與資料庫 drink_orders_order_no_check 一致。
+  const ORDER_NO_CHARS = '0123456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const newOrderNo = () => {
+    const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: '2-digit', month: '2-digit', day: '2-digit' })
+      .format(new Date()).replace(/\D/g, '');
+    const random = crypto.getRandomValues(new Uint32Array(4));
+    return `${date}-${Array.from(random, value => ORDER_NO_CHARS[value % ORDER_NO_CHARS.length]).join('')}`;
+  };
+  const LIST_LIMIT = 50;
   const summaryMessage = document.querySelector('#summary-message');
   const summaryBack = document.querySelector('#summary-back');
   const summaryConfirm = document.querySelector('#summary-confirm');
@@ -67,26 +77,54 @@
     }).format(date) + '（台北時間）';
   };
   const statusClass = status => status === '已完成' ? 'done' : status === '製作中' ? 'making' : '';
+  // 依訂單編號分組；沒有編號的舊資料各自成為一張訂單。資料已依時間由新到舊排序。
+  function groupOrders(rows) {
+    const groups = [];
+    const byKey = new Map();
+    rows.forEach(row => {
+      const key = row.order_no ? `no:${row.order_no}` : `id:${row.id}`;
+      let group = byKey.get(key);
+      if (!group) {
+        group = { orderNo: row.order_no, customerName: row.customer_name, createdAt: row.created_at, items: [] };
+        byKey.set(key, group);
+        groups.push(group);
+      }
+      group.items.push(row);
+    });
+    return groups;
+  }
+  const rowTotal = row => (Number(row.amount) || 0) * (Number(row.quantity) || 0);
   function renderOrders() {
     const visibleOrders = selectedStatus === '全部' ? orders
       : orders.filter(order => order.status === selectedStatus);
-    const cards = visibleOrders.map(order => {
+    const groups = groupOrders(visibleOrders);
+    const cards = groups.map(group => {
       const card = element('li', 'order-card', '');
       const top = element('div', 'order-top', '');
-      top.append(element('h3', '', `${order.drink} × ${order.quantity}`),
-        element('span', 'badge amount', money(order.amount * order.quantity)),
-        element('span', 'badge', order.sugar),
-        element('span', 'badge', order.ice),
-        element('span', `badge status ${statusClass(order.status)}`, order.status));
-      card.append(top);
-      if (order.note) card.append(element('p', 'order-note', `備註：${order.note}`));
-      card.append(element('div', 'order-meta', `${order.customer_name} · 每杯 ${money(order.amount)} · ${formatTime(order.created_at)}`));
+      top.append(element('h3', 'order-no', group.orderNo ? `訂單 ${group.orderNo}` : '訂單（無編號）'),
+        element('span', 'badge amount', `合計 ${money(group.items.reduce((sum, row) => sum + rowTotal(row), 0))}`));
+      const items = element('ul', 'order-items', '');
+      items.append(...group.items.map(row => {
+        const item = element('li', 'order-item', '');
+        const line = element('div', 'order-item-line', '');
+        line.append(element('strong', 'order-item-name', `${row.drink} × ${row.quantity}`),
+          element('span', 'order-item-price', money(rowTotal(row))));
+        const tags = element('div', 'order-item-tags', '');
+        tags.append(element('span', 'badge', row.sugar),
+          element('span', 'badge', row.ice),
+          element('span', `badge status ${statusClass(row.status)}`, row.status),
+          element('span', 'order-item-meta', `每杯 ${money(row.amount)}`));
+        item.append(line, tags);
+        if (row.note) item.append(element('p', 'order-note', `備註：${row.note}`));
+        return item;
+      }));
+      card.append(top, items, element('div', 'order-meta', `${group.customerName} · ${formatTime(group.createdAt)}`));
       return card;
     });
     list.replaceChildren(...cards);
     const cups = visibleOrders.reduce((sum, order) => sum + (Number(order.quantity) || 0), 0);
-    const total = visibleOrders.reduce((sum, order) => sum + (Number(order.amount) || 0) * (Number(order.quantity) || 0), 0);
-    cupTotal.textContent = `${selectedStatus === '全部' ? '' : `「${selectedStatus}」`}共 ${cards.length} 筆、${cups} 杯，合計 ${money(total)}`;
+    const total = visibleOrders.reduce((sum, order) => sum + rowTotal(order), 0);
+    cupTotal.textContent = `${selectedStatus === '全部' ? '' : `「${selectedStatus}」`}共 ${groups.length} 張訂單、${cups} 杯，合計 ${money(total)}`;
     cupTotal.hidden = !cards.length;
     showMessage(listMessage, !navigator.onLine ? '目前離線，無法取得最新訂單。已顯示的紀錄僅保留於本次開啟的頁面。'
       : loading ? '正在載入訂單…'
@@ -115,8 +153,8 @@
     showMessage(listMessage, '正在載入訂單…');
     try {
       const { data, error } = await client.from('drink_orders')
-        .select('id,customer_name,drink,sugar,ice,amount,quantity,note,status,created_at')
-        .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(20);
+        .select('id,order_no,customer_name,drink,sugar,ice,amount,quantity,note,status,created_at')
+        .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(LIST_LIMIT);
       if (error) throw error;
       orders = data || [];
       hasLoaded = true;
@@ -240,7 +278,10 @@
       if (!item) return;
       items.push(item);
     }
-    pendingItems = items.map(item => ({ customer_name: customerName, ...item }));
+    // 每次開啟確認頁產生新編號；在確認頁內重新送出時沿用同一編號。
+    const orderNo = newOrderNo();
+    pendingItems = items.map(item => ({ order_no: orderNo, customer_name: customerName, ...item }));
+    summaryNo.textContent = orderNo;
     summaryCustomer.textContent = `點餐人：${customerName}`;
     summaryList.replaceChildren(...pendingItems.map((item, index) => {
       const row = element('li', 'summary-item', '');
@@ -282,7 +323,7 @@
       pendingItems = [];
       form.reset();
       updateSubtotal();
-      showMessage(formMessage, `訂單已成功送出！共 ${items.length} 項、${cupsOf(items)} 杯，合計 ${money(sumOf(items))}。`, 'success');
+      showMessage(formMessage, `訂單已成功送出！訂單編號 ${items[0].order_no}，共 ${items.length} 項、${cupsOf(items)} 杯，合計 ${money(sumOf(items))}。`, 'success');
       await loadOrders();
     } catch (error) {
       showMessage(summaryMessage, `送出失敗，已點內容都保留。請確認連線後重試；若連線中斷，請先關閉此視窗並重新整理清單確認是否已下單。錯誤：${error.message || '連線失敗'}`, 'error');

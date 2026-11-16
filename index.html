@@ -43,13 +43,14 @@
     </section>
     <dialog id="summary-dialog" class="summary-dialog" aria-labelledby="summary-title">
       <h2 id="summary-title">確認訂單</h2>
+      <p class="summary-no">訂單編號 <strong id="summary-no"></strong></p>
       <p id="summary-customer" class="summary-customer"></p>
       <ol id="summary-list" class="summary-list"></ol>
       <p class="summary-total"><span>合計<small id="summary-count"></small></span><strong id="summary-total"></strong></p>
       <p id="summary-message" class="message" role="status" aria-live="polite" hidden></p>
       <div class="summary-actions"><button id="summary-back" class="secondary" type="button">返回修改</button><button id="summary-confirm" type="button">確認送出</button></div>
     </dialog>
-    <section class="panel orders-panel" aria-labelledby="list-title"><div class="list-heading"><div class="section-heading"><span class="step">02</span><div><h2 id="list-title">最近訂單</h2><p>最近 20 筆訂單，依時間由新到舊排列。</p></div></div><button id="refresh-button" class="secondary" type="button">重新整理</button></div><div class="status-filters" role="group" aria-label="依製作狀態篩選訂單"><button type="button" data-status-filter="全部" aria-pressed="true">全部</button><button type="button" data-status-filter="待製作" aria-pressed="false">待製作</button><button type="button" data-status-filter="製作中" aria-pressed="false">製作中</button><button type="button" data-status-filter="已完成" aria-pressed="false">已完成</button></div><p id="cup-total" class="cup-total" hidden></p><p id="list-message" class="message" role="status" aria-live="polite">正在載入訂單…</p><ul id="order-list" class="order-list" aria-label="最近訂單"></ul></section>
+    <section class="panel orders-panel" aria-labelledby="list-title"><div class="list-heading"><div class="section-heading"><span class="step">02</span><div><h2 id="list-title">最近訂單</h2><p>最近 50 杯，依訂單編號分組，新的在上面。</p></div></div><button id="refresh-button" class="secondary" type="button">重新整理</button></div><div class="status-filters" role="group" aria-label="依製作狀態篩選訂單"><button type="button" data-status-filter="全部" aria-pressed="true">全部</button><button type="button" data-status-filter="待製作" aria-pressed="false">待製作</button><button type="button" data-status-filter="製作中" aria-pressed="false">製作中</button><button type="button" data-status-filter="已完成" aria-pressed="false">已完成</button></div><p id="cup-total" class="cup-total" hidden></p><p id="list-message" class="message" role="status" aria-live="polite">正在載入訂單…</p><ul id="order-list" class="order-list" aria-label="最近訂單"></ul></section>
     <footer>午茶工作台 <span>／</span> 一杯一杯，準時送達。</footer>
   </main>
 </body>

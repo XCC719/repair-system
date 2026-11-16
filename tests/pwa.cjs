@@ -42,12 +42,14 @@ const server = http.createServer((req, res) => {
         // A whole order is sent as one array insert; every row has the same columns.
         assert(Array.isArray(lastPayload) && lastPayload.length > 0);
         for (const row of lastPayload) {
-          assert.deepEqual(Object.keys(row).sort(), ['amount', 'customer_name', 'drink', 'ice', 'note', 'quantity', 'sugar']);
+          assert.deepEqual(Object.keys(row).sort(), ['amount', 'customer_name', 'drink', 'ice', 'note', 'order_no', 'quantity', 'sugar']);
+          assert.match(row.order_no, /^[0-9]{6}-[0-9A-HJ-NP-Z]{4}$/);
+          assert.equal(row.order_no, lastPayload[0].order_no);
         }
       } else reads++;
       if (fail) return route.abort();
       return route.fulfill({ json: ['待製作','製作中','已完成'].map((status, id) => ({ id, status, drink: ['紅茶','珍珠奶茶','拿鐵'][id],
-        sugar: '半糖', ice: '少冰', amount: [30, 55, 70][id], quantity: id + 1, note: id ? null : '示範備註', customer_name: '示範使用者', created_at: '2026-11-11T00:00:00Z' })) });
+        sugar: '半糖', ice: '少冰', amount: [30, 55, 70][id], quantity: id + 1, order_no: ['261111-AB12', '261111-AB12', null][id], note: id ? null : '示範備註', customer_name: '示範使用者', created_at: '2026-11-11T00:00:00Z' })) });
     });
     await page.goto(url);
     await page.waitForFunction(() => navigator.serviceWorker.controller);
@@ -60,13 +62,18 @@ const server = http.createServer((req, res) => {
     assert.equal(new URL(parsed.start_url, url).pathname, prefix);
     const errors = await cdp.send('Page.getInstallabilityErrors');
     assert.deepEqual(errors.installabilityErrors, []);
-    assert.equal(await page.locator('.order-card').count(), 3);
-    assert.match(await page.locator('#cup-total').innerText(), /共 3 筆、6 杯，合計 NT\$350/);
-    assert.match(await page.locator('.order-card').nth(1).innerText(), /珍珠奶茶 × 2[\s\S]*NT\$110[\s\S]*每杯 NT\$55/);
+    // Rows sharing an order number are grouped into one card with the order total.
+    assert.equal(await page.locator('.order-card').count(), 2);
+    assert.equal(await page.locator('.order-item').count(), 3);
+    assert.match(await page.locator('#cup-total').innerText(), /共 2 張訂單、6 杯，合計 NT\$350/);
+    const firstCard = await page.locator('.order-card').first().innerText();
+    assert.match(firstCard, /訂單 261111-AB12[\s\S]*合計 NT\$140/);
+    assert.match(firstCard, /紅茶 × 1[\s\S]*珍珠奶茶 × 2[\s\S]*NT\$110[\s\S]*每杯 NT\$55/);
+    assert.match(await page.locator('.order-card').nth(1).innerText(), /訂單（無編號）[\s\S]*拿鐵 × 3/);
     assert.equal(await page.locator('.order-note').count(), 1);
     await page.locator('[data-status-filter="已完成"]').click();
     assert.equal(await page.locator('.order-card').count(), 1);
-    assert.match(await page.locator('#cup-total').innerText(), /「已完成」共 1 筆、3 杯，合計 NT\$210/);
+    assert.match(await page.locator('#cup-total').innerText(), /「已完成」共 1 張訂單、3 杯，合計 NT\$210/);
     assert.equal(reads, 1);
     fail = true;
     await page.locator('#refresh-button').click();
@@ -157,13 +164,19 @@ const server = http.createServer((req, res) => {
     fail = true;
     await page.locator('#summary-confirm').click();
     await page.waitForFunction(() => document.querySelector('#summary-message').textContent.includes('送出失敗'));
+    const shownNo = await text('#summary-no');
+    assert.match(shownNo, /^[0-9]{6}-[0-9A-HJ-NP-Z]{4}$/);
+    assert.equal(lastPayload[0].order_no, shownNo);
     assert.equal(await dialogOpen(), true);
     assert.equal(await page.locator('.cart-item').count(), 2);
     fail = false;
     await page.locator('#summary-confirm').click();
     await page.waitForFunction(() => document.querySelector('#form-message').textContent.includes('成功送出'));
     assert.equal(writes, 2);
-    assert.deepEqual(lastPayload, [
+    // The retry reuses the order number shown on the confirmation page.
+    assert(lastPayload.every(row => row.order_no === shownNo));
+    assert(String(await text('#form-message')).includes(`訂單編號 ${shownNo}`));
+    assert.deepEqual(lastPayload.map(({ order_no, ...row }) => row), [
       { customer_name: '示範使用者（虛構）', drink: '珍珠奶茶', sugar: '半糖', ice: '少冰', amount: 65, quantity: 2, note: null },
       { customer_name: '示範使用者（虛構）', drink: '四季春青茶', sugar: '無糖', ice: '溫', amount: 80, quantity: 1, note: '燕麥奶' },
       { customer_name: '示範使用者（虛構）', drink: '紅茶', sugar: '半糖', ice: '少冰', amount: 30, quantity: 1, note: null }
@@ -195,7 +208,8 @@ const server = http.createServer((req, res) => {
     await page.locator('#summary-confirm').click();
     await page.waitForFunction(() => document.querySelector('#form-message').textContent.includes('成功送出') && !document.querySelector('[name=customer_name]').value);
     assert.equal(writes, 3);
-    assert.deepEqual(lastPayload, [{ customer_name: '示範使用者（虛構）', drink: '烏龍茶', sugar: '半糖', ice: '少冰', amount: 35, quantity: 1, note: null }]);
+    assert.notEqual(lastPayload[0].order_no, shownNo);
+    assert.deepEqual(lastPayload.map(({ order_no, ...row }) => row), [{ customer_name: '示範使用者（虛構）', drink: '烏龍茶', sugar: '半糖', ice: '少冰', amount: 35, quantity: 1, note: null }]);
     // Other applications' caches must survive this worker's activation.
     await page.evaluate(async () => {
       const cache = await caches.open('unrelated-app');
@@ -238,7 +252,7 @@ const server = http.createServer((req, res) => {
     await page.waitForFunction(() => document.querySelector('#list-message').textContent.includes('重新載入頁面'));
     assert.equal(await page.locator('#submit-button').isDisabled(), true);
     assert.equal(writes, 3);
-    console.log('PASS: subpath manifest/installability, SW shell cache, offline reload, no API cache or queued writes, reconnect, status filters/amount total/error state, amount/quantity validation, multi-drink order/total/remove/retry, payload fields, update banner, mobile layout');
+    console.log('PASS: subpath manifest/installability, SW shell cache, offline reload, no API cache or queued writes, reconnect, status filters/amount total/error state, amount/quantity validation, multi-drink order/total/remove/retry, order number/grouping, payload fields, update banner, mobile layout');
     await context.close();
   } finally { await browser.close(); fs.rmSync(profile, { recursive: true, force: true }); }
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => server.close());
