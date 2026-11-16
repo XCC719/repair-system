@@ -1,8 +1,12 @@
 'use strict';
 // Change the version whenever any shell asset changes. A new worker waits until
-// existing tabs close, so an active form is never reloaded during an update.
+// existing tabs close, or until the user presses the update banner in pwa.js,
+// so an active form is never reloaded without the user's consent.
 const CACHE_PREFIX = `drink-shell:${self.registration.scope}:`;
-const CACHE_NAME = `${CACHE_PREFIX}v1`;
+const CACHE_NAME = `${CACHE_PREFIX}v2`;
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
+});
 // Caches left by the former repair app at this same scope are removed on activation.
 const LEGACY_PREFIX = `repair-shell:${self.registration.scope}:`;
 const SHELL = [

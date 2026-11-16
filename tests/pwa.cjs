@@ -7,6 +7,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const prefix = '/repair-system/';
+// Appended to sw.js to simulate deploying a new release while a page is open.
+let swRelease = '';
 const server = http.createServer((req, res) => {
   const pathname = new URL(req.url, 'http://localhost').pathname;
   if (!pathname.startsWith(prefix)) { res.writeHead(404).end(); return; }
@@ -18,7 +20,7 @@ const server = http.createServer((req, res) => {
   fs.readFile(file, (error, content) => {
     if (error) { res.writeHead(404).end(); return; }
     res.setHeader('Content-Type', mime[path.extname(file)] || 'application/octet-stream');
-    res.end(content);
+    res.end(relative === 'sw.js' && swRelease ? Buffer.concat([content, Buffer.from(swRelease)]) : content);
   });
 });
 (async () => {
@@ -135,6 +137,29 @@ const server = http.createServer((req, res) => {
     });
     await page.reload();
     assert(await page.evaluate(async () => (await caches.keys()).includes('unrelated-app')));
+    // New release: the page shows an update banner instead of reloading by itself.
+    assert.equal(await page.locator('#update-banner').isHidden(), true);
+    swRelease = '\n// simulated release 2\n';
+    await page.locator('[name=customer_name]').fill('更新前填寫（虛構）');
+    await page.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
+    await page.waitForSelector('#update-banner:not([hidden])');
+    assert.match(await page.locator('#update-text').innerText(), /新版本/);
+    assert.equal(await page.locator('[name=customer_name]').inputValue(), '更新前填寫（虛構）');
+    // Cancelling the confirmation keeps the unsent form and the banner.
+    page.once('dialog', dialog => dialog.dismiss());
+    await page.locator('#update-button').click();
+    assert.equal(await page.locator('[name=customer_name]').inputValue(), '更新前填寫（虛構）');
+    assert.equal(await page.locator('#update-banner').isVisible(), true);
+    assert.equal(await page.locator('#update-button').isDisabled(), false);
+    // Confirming activates the waiting worker and reloads once.
+    page.once('dialog', dialog => dialog.accept());
+    await page.evaluate(() => { window.__beforeUpdate = true; });
+    await Promise.all([page.waitForEvent('load'), page.locator('#update-button').click()]);
+    await page.waitForFunction(() => navigator.serviceWorker.controller);
+    assert.equal(await page.evaluate(() => window.__beforeUpdate), undefined);
+    assert.equal(await page.locator('#update-banner').isHidden(), true);
+    assert.equal(await page.locator('[name=customer_name]').inputValue(), '');
+    assert.equal(await page.evaluate(async () => !(await navigator.serviceWorker.getRegistration()).waiting), true);
     await context.route('https://cdn.jsdelivr.net/**', route => route.abort());
     await context.setOffline(true);
     await cdp.send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
@@ -147,7 +172,7 @@ const server = http.createServer((req, res) => {
     await page.waitForFunction(() => document.querySelector('#list-message').textContent.includes('重新載入頁面'));
     assert.equal(await page.locator('#submit-button').isDisabled(), true);
     assert.equal(writes, 2);
-    console.log('PASS: subpath manifest/installability, SW shell cache, offline reload, no API cache or queued writes, reconnect, status filters/amount total/error state, amount/quantity validation, payload fields, mobile layout');
+    console.log('PASS: subpath manifest/installability, SW shell cache, offline reload, no API cache or queued writes, reconnect, status filters/amount total/error state, amount/quantity validation, payload fields, update banner, mobile layout');
     await context.close();
   } finally { await browser.close(); fs.rmSync(profile, { recursive: true, force: true }); }
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => server.close());

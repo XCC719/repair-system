@@ -31,5 +31,5 @@
 ## PWA 元件與驗證
 
 - `manifest.webmanifest`、`icons/` 為安裝資訊與圖示；`pwa.js` 負責安裝提示、連線狀態與 Service Worker 註冊，`sw.js` 僅快取靜態介面，不快取訂單資料或 POST。
-- 修改快取檔案時遞增 `sw.js` 快取版本；新版等待舊頁面關閉後啟用，不強制重新載入表單。
+- 修改快取檔案時遞增 `sw.js` 快取版本；新版等待舊頁面關閉後啟用，或由使用者按 `pwa.js` 顯示的「立即更新」提示後啟用（`SKIP_WAITING` 訊息），不自動重新載入表單。
 - `tests/pwa.cjs` 為 Playwright 瀏覽器回歸測試，自啟本機伺服器、使用虛構 API；執行 `node tests/pwa.cjs`（需 Playwright 與 Chromium，可設 `CHROMIUM_PATH`）。語法檢查另加 `node --check pwa.js`、`node --check sw.js`。
