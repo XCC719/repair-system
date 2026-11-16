@@ -4,7 +4,7 @@
   const installButton = document.querySelector('#install-button');
   const showConnection = () => {
     message.hidden = navigator.onLine;
-    message.textContent = '目前離線：可開啟已快取的操作介面；送出報修與更新清單需要連線。輸入內容不會儲存或自動補送，請勿關閉或重新載入尚未送出的表單。';
+    message.textContent = '目前離線：可開啟已快取的操作介面；送出訂單與更新清單需要連線。輸入內容不會儲存或自動補送，請勿關閉或重新載入尚未送出的表單。';
   };
   showConnection();
   window.addEventListener('online', showConnection);
