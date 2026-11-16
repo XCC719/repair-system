@@ -3,3 +3,4 @@
 .status-filters{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}.status-filters button{background:#f7f1ea;color:var(--green);border:2px solid var(--line);padding:8px 16px}.status-filters button[aria-pressed="true"]{background:var(--green);color:#fff;border-color:var(--green)}
 .pwa-tools:has(> :not([hidden])){margin-bottom:24px}.pwa-tools .message{margin:12px 0 0}
 .cup-total{font-size:14px;font-weight:600;color:var(--green);margin:0 0 12px}
+.hint{font-size:12px;color:var(--muted);margin:-14px 0 22px}input[readonly]{background:#f6f1eb;font-weight:600;color:var(--green)}.badge.amount{background:var(--green);color:#fff;font-weight:600}

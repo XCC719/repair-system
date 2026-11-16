@@ -37,13 +37,13 @@ const server = http.createServer((req, res) => {
       if (route.request().method() === 'POST') {
         writes++;
         lastPayload = JSON.parse(route.request().postData());
-        const { note, ...required } = lastPayload;
-        assert.deepEqual(Object.keys(required).sort(), ['customer_name', 'drink', 'ice', 'quantity', 'size', 'sugar']);
+        const required = lastPayload;
+        assert.deepEqual(Object.keys(required).sort(), ['amount', 'customer_name', 'drink', 'ice', 'sugar']);
         assert(!('status' in lastPayload));
       } else reads++;
       if (fail) return route.abort();
-      return route.fulfill({ json: ['待製作','製作中','已完成'].map((status, id) => ({ id, status, drink: '珍珠奶茶',
-        size: '大杯', sugar: '半糖', ice: '少冰', quantity: id + 1, note: id ? null : '示範備註', customer_name: '示範使用者', created_at: '2026-11-11T00:00:00Z' })) });
+      return route.fulfill({ json: ['待製作','製作中','已完成'].map((status, id) => ({ id, status, drink: ['紅茶','珍珠奶茶','拿鐵'][id],
+        sugar: '半糖', ice: '少冰', amount: [30, 55, 70][id], customer_name: '示範使用者', created_at: '2026-11-11T00:00:00Z' })) });
     });
     await page.goto(url);
     await page.waitForFunction(() => navigator.serviceWorker.controller);
@@ -57,11 +57,11 @@ const server = http.createServer((req, res) => {
     const errors = await cdp.send('Page.getInstallabilityErrors');
     assert.deepEqual(errors.installabilityErrors, []);
     assert.equal(await page.locator('.order-card').count(), 3);
-    assert.match(await page.locator('#cup-total').innerText(), /共 3 筆訂單、6 杯/);
-    assert.equal(await page.locator('.order-note').count(), 1);
+    assert.match(await page.locator('#cup-total').innerText(), /共 3 杯，合計 NT\$155/);
+    assert.match(await page.locator('.order-card').first().innerText(), /NT\$30/);
     await page.locator('[data-status-filter="已完成"]').click();
     assert.equal(await page.locator('.order-card').count(), 1);
-    assert.match(await page.locator('#cup-total').innerText(), /「已完成」共 1 筆訂單、3 杯/);
+    assert.match(await page.locator('#cup-total').innerText(), /「已完成」共 1 杯，合計 NT\$70/);
     assert.equal(reads, 1);
     fail = true;
     await page.locator('#refresh-button').click();
@@ -100,21 +100,23 @@ const server = http.createServer((req, res) => {
     assert.equal(writes, 0);
     await page.locator('[name=customer_name]').fill('示範使用者（虛構）');
     await page.locator('[name=drink]').selectOption('珍珠奶茶');
-    await page.locator('[name=quantity]').fill('2');
+    assert.equal(await page.locator('[name=amount]').inputValue(), 'NT$55');
     await page.locator('#submit-button').click();
     await page.waitForFunction(() => document.querySelector('#form-message').textContent.includes('成功送出'));
     assert.equal(writes, 1);
-    assert.deepEqual(lastPayload, { customer_name: '示範使用者（虛構）', drink: '珍珠奶茶', size: '中杯', sugar: '半糖', ice: '少冰', quantity: 2 });
+    assert.deepEqual(lastPayload, { customer_name: '示範使用者（虛構）', drink: '珍珠奶茶', sugar: '半糖', ice: '少冰', amount: 55 });
     assert.equal(await page.locator('[name=customer_name]').inputValue(), '');
+    assert.equal(await page.locator('[name=amount]').inputValue(), '');
     await page.locator('[name=customer_name]').fill('示範使用者（虛構）');
     await page.locator('[name=drink]').selectOption('拿鐵');
     await page.locator('[value=熱]').check();
-    await page.locator('[name=note]').fill('  少奶  ');
+    await page.locator('[value=無糖]').check();
+    // A tampered amount field must not change the price that is sent.
+    await page.evaluate(() => { document.querySelector('[name=amount]').value = 'NT$1'; });
     await page.locator('#submit-button').click();
-    await page.waitForFunction(() => document.querySelector('#form-message').textContent.includes('成功送出') && !document.querySelector('[name=note]').value);
+    await page.waitForFunction(() => document.querySelector('#form-message').textContent.includes('成功送出') && !document.querySelector('[name=customer_name]').value);
     assert.equal(writes, 2);
-    assert.equal(lastPayload.note, '少奶');
-    assert.equal(lastPayload.ice, '熱');
+    assert.deepEqual(lastPayload, { customer_name: '示範使用者（虛構）', drink: '拿鐵', sugar: '無糖', ice: '熱', amount: 70 });
     // Other applications' caches must survive this worker's activation.
     await page.evaluate(async () => {
       const cache = await caches.open('unrelated-app');
@@ -134,7 +136,7 @@ const server = http.createServer((req, res) => {
     await page.waitForFunction(() => document.querySelector('#list-message').textContent.includes('重新載入頁面'));
     assert.equal(await page.locator('#submit-button').isDisabled(), true);
     assert.equal(writes, 2);
-    console.log('PASS: subpath manifest/installability, SW shell cache, offline reload, no API cache or queued writes, reconnect, status filters/cup total/error state, payload fields, mobile layout');
+    console.log('PASS: subpath manifest/installability, SW shell cache, offline reload, no API cache or queued writes, reconnect, status filters/amount total/error state, payload fields, mobile layout');
     await context.close();
   } finally { await browser.close(); fs.rmSync(profile, { recursive: true, force: true }); }
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => server.close());

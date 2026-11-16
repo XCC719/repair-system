@@ -9,6 +9,13 @@
   const list = document.querySelector('#order-list');
   const filterButtons = document.querySelectorAll('[data-status-filter]');
   const SUBMIT_LABEL = '送出訂單 ↗';
+  // 價目須與 supabase/schema.sql 的 drink_orders_price_check 一致（虛構價格）。
+  const PRICES = Object.freeze({ 紅茶: 30, 綠茶: 30, 烏龍茶: 35, 奶茶: 45, 珍珠奶茶: 55, 檸檬綠茶: 50, 美式咖啡: 60, 拿鐵: 70 });
+  const drinkSelect = form.elements.drink;
+  const amountInput = form.elements.amount;
+  const money = value => `NT$${Number(value).toLocaleString('zh-TW')}`;
+  const updateAmount = () => { amountInput.value = PRICES[drinkSelect.value] ? money(PRICES[drinkSelect.value]) : ''; };
+  drinkSelect.addEventListener('change', updateAmount);
   let orders = [];
   let selectedStatus = '全部';
   let hasLoaded = false;
@@ -41,19 +48,17 @@
     const cards = visibleOrders.map(order => {
       const card = element('li', 'order-card', '');
       const top = element('div', 'order-top', '');
-      top.append(element('h3', '', `${order.drink} × ${order.quantity}`),
-        element('span', 'badge', order.size),
+      top.append(element('h3', '', order.drink),
+        element('span', 'badge amount', money(order.amount)),
         element('span', 'badge', order.sugar),
         element('span', 'badge', order.ice),
         element('span', `badge status ${statusClass(order.status)}`, order.status));
-      card.append(top);
-      if (order.note) card.append(element('p', 'order-note', `備註：${order.note}`));
-      card.append(element('div', 'order-meta', `${order.customer_name} · ${formatTime(order.created_at)}`));
+      card.append(top, element('div', 'order-meta', `${order.customer_name} · ${formatTime(order.created_at)}`));
       return card;
     });
     list.replaceChildren(...cards);
-    const cups = visibleOrders.reduce((sum, order) => sum + (Number(order.quantity) || 0), 0);
-    cupTotal.textContent = `${selectedStatus === '全部' ? '' : `「${selectedStatus}」`}共 ${cards.length} 筆訂單、${cups} 杯`;
+    const total = visibleOrders.reduce((sum, order) => sum + (Number(order.amount) || 0), 0);
+    cupTotal.textContent = `${selectedStatus === '全部' ? '' : `「${selectedStatus}」`}共 ${cards.length} 杯，合計 ${money(total)}`;
     cupTotal.hidden = !cards.length;
     showMessage(listMessage, !navigator.onLine ? '目前離線，無法取得最新訂單。已顯示的紀錄僅保留於本次開啟的頁面。'
       : loading ? '正在載入訂單…'
@@ -82,7 +87,7 @@
     showMessage(listMessage, '正在載入訂單…');
     try {
       const { data, error } = await client.from('drink_orders')
-        .select('id,customer_name,drink,size,sugar,ice,quantity,note,status,created_at')
+        .select('id,customer_name,drink,sugar,ice,amount,status,created_at')
         .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(20);
       if (error) throw error;
       orders = data || [];
@@ -106,20 +111,17 @@
     if (submitting || !client || !form.reportValidity()) return;
     const values = new FormData(form);
     const text = key => String(values.get(key) || '').trim();
-    const payload = Object.fromEntries(['customer_name', 'drink', 'size', 'sugar', 'ice']
+    const payload = Object.fromEntries(['customer_name', 'drink', 'sugar', 'ice']
       .map(key => [key, text(key)]));
     if (Object.values(payload).some(value => !value)) {
-      showMessage(formMessage, '請完整填寫必填欄位，內容不可只有空白。', 'error');
+      showMessage(formMessage, '請完整填寫所有欄位，內容不可只有空白。', 'error');
       return;
     }
-    const quantity = Number(text('quantity'));
-    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
-      showMessage(formMessage, '數量須為 1 到 20 杯的整數。', 'error');
+    if (!PRICES[payload.drink]) {
+      showMessage(formMessage, '請從清單選擇飲品，才能計算金額。', 'error');
       return;
     }
-    payload.quantity = quantity;
-    const note = text('note');
-    if (note) payload.note = note;
+    payload.amount = PRICES[payload.drink];
     submitting = true;
     submitButton.disabled = true;
     submitButton.textContent = '正在送出…';
@@ -128,6 +130,7 @@
       const { error } = await client.from('drink_orders').insert(payload);
       if (error) throw error;
       form.reset();
+      updateAmount();
       showMessage(formMessage, '訂單已成功送出！飲料準備中，請留意清單狀態。', 'success');
       await loadOrders();
     } catch (error) {
