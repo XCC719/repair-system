@@ -3,7 +3,7 @@
 // existing tabs close, or until the user presses the update banner in pwa.js,
 // so an active form is never reloaded without the user's consent.
 const CACHE_PREFIX = `drink-shell:${self.registration.scope}:`;
-const CACHE_NAME = `${CACHE_PREFIX}v2`;
+const CACHE_NAME = `${CACHE_PREFIX}v3`;
 self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });

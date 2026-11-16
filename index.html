@@ -19,21 +19,38 @@
   <header class="topbar"><div class="brand"><span class="brand-icon" aria-hidden="true">☕</span>午茶工作台<span class="demo">示範系統</span></div></header>
   <main>
     <div class="pwa-tools"><div id="update-banner" class="update-banner" role="status" aria-live="polite" hidden><span id="update-text">有新版本可以使用。</span><button id="update-button" type="button">立即更新</button></div><button id="install-button" class="secondary" type="button" hidden>安裝點餐系統</button><p id="connection-message" class="message" role="status" hidden></p></div>
-    <div class="intro"><p class="eyebrow">DRINK ORDER</p><h1>一杯好飲料，<br>讓下午更有精神。</h1><p>輸入飲品、選好糖份與冰量，送出後就會出現在訂單清單。</p></div>
+    <div class="intro"><p class="eyebrow">DRINK ORDER</p><h1>一杯好飲料，<br>讓下午更有精神。</h1><p>輸入飲品、選好糖份與冰量，可一次點多杯，送出後就會出現在訂單清單。</p></div>
     <section class="panel" aria-labelledby="form-title">
-      <div class="section-heading"><span class="step">01</span><div><h2 id="form-title">飲料點餐</h2><p>請依店家實際價目輸入每杯金額，小計會自動計算。除備註外皆為必填。</p></div></div>
-      <form id="order-form">
-        <div class="grid"><label>點餐人<input name="customer_name" autocomplete="name" required maxlength="100" placeholder="例如：陳小明（虛構）"></label><label>飲品<input name="drink" required maxlength="50" autocomplete="off" placeholder="例如：珍珠奶茶、四季春青茶"></label></div>
-        <fieldset><legend>糖份</legend><div class="choice-options five"><label><input type="radio" name="sugar" value="無糖" required><span>無糖</span></label><label><input type="radio" name="sugar" value="微糖"><span>微糖</span></label><label><input type="radio" name="sugar" value="半糖" checked><span>半糖</span></label><label><input type="radio" name="sugar" value="少糖"><span>少糖</span></label><label><input type="radio" name="sugar" value="全糖"><span>全糖</span></label></div></fieldset>
-        <fieldset><legend>冰量</legend><div class="choice-options six"><label><input type="radio" name="ice" value="去冰" required><span>去冰</span></label><label><input type="radio" name="ice" value="微冰"><span>微冰</span></label><label><input type="radio" name="ice" value="少冰" checked><span>少冰</span></label><label><input type="radio" name="ice" value="正常冰"><span>正常冰</span></label><label><input type="radio" name="ice" value="溫"><span>溫</span></label><label><input type="radio" name="ice" value="熱"><span>熱</span></label></div></fieldset>
-        <div class="grid"><label>金額（每杯，新台幣）<input name="amount" type="number" inputmode="numeric" required min="1" max="9999" step="1" placeholder="依店家實際價目輸入，例如 55"></label><label>數量（杯）<input name="quantity" type="number" inputmode="numeric" required min="1" max="50" step="1" value="1"></label></div>
-        <p id="subtotal" class="subtotal" aria-live="polite">小計：請輸入金額與數量</p>
-        <label>備註（選填）<input name="note" maxlength="200" placeholder="例如：珍珠少一點、加椰果"></label>
-        <div class="form-footer"><p>此為公開示範，請使用虛構姓名，勿填寫敏感資訊。</p><button id="submit-button" type="submit">送出訂單 <span aria-hidden="true">↗</span></button></div>
+      <div class="section-heading"><span class="step">01</span><div><h2 id="form-title">飲料點餐</h2><p>一次可點多杯：填好一杯後按「新增下一筆飲品」，全部點完按「完成訂單」，系統會自動加總金額。</p></div></div>
+      <form id="order-form" novalidate>
+        <label>點餐人<input name="customer_name" autocomplete="name" required maxlength="100" placeholder="例如：陳小明（虛構）"></label>
+        <div id="cart" class="cart" hidden>
+          <div class="cart-head"><strong>已點飲品</strong><span id="cart-total" class="cart-total"></span></div>
+          <ol id="cart-list" class="cart-list" aria-label="已點飲品"></ol>
+        </div>
+        <div id="item-editor" class="item-editor">
+          <h3 id="item-title" class="item-title" tabindex="-1">第 1 杯</h3>
+          <label>飲品<input name="drink" required maxlength="50" autocomplete="off" placeholder="例如：珍珠奶茶、四季春青茶"></label>
+          <fieldset><legend>糖份</legend><div class="choice-options five"><label><input type="radio" name="sugar" value="無糖" required><span>無糖</span></label><label><input type="radio" name="sugar" value="微糖"><span>微糖</span></label><label><input type="radio" name="sugar" value="半糖" checked><span>半糖</span></label><label><input type="radio" name="sugar" value="少糖"><span>少糖</span></label><label><input type="radio" name="sugar" value="全糖"><span>全糖</span></label></div></fieldset>
+          <fieldset><legend>冰量</legend><div class="choice-options six"><label><input type="radio" name="ice" value="去冰" required><span>去冰</span></label><label><input type="radio" name="ice" value="微冰"><span>微冰</span></label><label><input type="radio" name="ice" value="少冰" checked><span>少冰</span></label><label><input type="radio" name="ice" value="正常冰"><span>正常冰</span></label><label><input type="radio" name="ice" value="溫"><span>溫</span></label><label><input type="radio" name="ice" value="熱"><span>熱</span></label></div></fieldset>
+          <div class="grid"><label>金額（每杯，新台幣）<input name="amount" type="number" inputmode="numeric" required min="1" max="9999" step="1" placeholder="依店家實際價目輸入，例如 55"></label><label>數量（杯）<input name="quantity" type="number" inputmode="numeric" required min="1" max="50" step="1" value="1"></label></div>
+          <p id="subtotal" class="subtotal" aria-live="polite">小計：請輸入金額與數量</p>
+          <label>備註（選填）<input name="note" maxlength="200" placeholder="例如：珍珠少一點、加椰果"></label>
+        </div>
+        <div class="form-footer"><p>此為公開示範，請使用虛構姓名，勿填寫敏感資訊。</p><div class="form-actions"><button id="next-button" class="secondary" type="button">＋ 新增下一筆飲品</button><button id="submit-button" type="submit">完成訂單 <span aria-hidden="true">↗</span></button></div></div>
         <p id="form-message" class="message" role="status" aria-live="polite" hidden></p>
       </form>
     </section>
-    <section class="panel orders-panel" aria-labelledby="list-title"><div class="list-heading"><div class="section-heading"><span class="step">02</span><div><h2 id="list-title">最近訂單</h2><p>最近 20 筆訂單，依時間由新到舊排列。</p></div></div><button id="refresh-button" class="secondary" type="button">重新整理</button></div><div class="status-filters" role="group" aria-label="依製作狀態篩選訂單"><button type="button" data-status-filter="全部" aria-pressed="true">全部</button><button type="button" data-status-filter="待製作" aria-pressed="false">待製作</button><button type="button" data-status-filter="製作中" aria-pressed="false">製作中</button><button type="button" data-status-filter="已完成" aria-pressed="false">已完成</button></div><p id="cup-total" class="cup-total" hidden></p><p id="list-message" class="message" role="status" aria-live="polite">正在載入訂單…</p><ul id="order-list" class="order-list" aria-label="最近訂單"></ul></section>
+    <dialog id="summary-dialog" class="summary-dialog" aria-labelledby="summary-title">
+      <h2 id="summary-title">確認訂單</h2>
+      <p class="summary-no">訂單編號 <strong id="summary-no"></strong></p>
+      <p id="summary-customer" class="summary-customer"></p>
+      <ol id="summary-list" class="summary-list"></ol>
+      <p class="summary-total"><span>合計<small id="summary-count"></small></span><strong id="summary-total"></strong></p>
+      <p id="summary-message" class="message" role="status" aria-live="polite" hidden></p>
+      <div class="summary-actions"><button id="summary-back" class="secondary" type="button">返回修改</button><button id="summary-confirm" type="button">確認送出</button></div>
+    </dialog>
+    <section class="panel orders-panel" aria-labelledby="list-title"><div class="list-heading"><div class="section-heading"><span class="step">02</span><div><h2 id="list-title">最近訂單</h2><p>最近 50 杯，依訂單編號分組，新的在上面。</p></div></div><button id="refresh-button" class="secondary" type="button">重新整理</button></div><div class="status-filters" role="group" aria-label="依製作狀態篩選訂單"><button type="button" data-status-filter="全部" aria-pressed="true">全部</button><button type="button" data-status-filter="待製作" aria-pressed="false">待製作</button><button type="button" data-status-filter="製作中" aria-pressed="false">製作中</button><button type="button" data-status-filter="已完成" aria-pressed="false">已完成</button></div><p id="cup-total" class="cup-total" hidden></p><p id="list-message" class="message" role="status" aria-live="polite">正在載入訂單…</p><ul id="order-list" class="order-list" aria-label="最近訂單"></ul></section>
     <footer>午茶工作台 <span>／</span> 一杯一杯，準時送達。</footer>
   </main>
 </body>

@@ -21,6 +21,8 @@ CREATE TABLE public.drink_orders (
     quantity integer NOT NULL DEFAULT 1,
     note text,
     status text NOT NULL DEFAULT '待製作',
+    -- 訂單編號：同一張訂單的每杯共用，例如 261116-7K3P；舊資料可為 NULL。
+    order_no text,
 
     -- CHECK 第一組：文字長度與數值範圍（設計選擇，待確認），並拒絕只有空白字元的輸入。
     CONSTRAINT drink_orders_customer_name_check CHECK (
@@ -46,9 +48,16 @@ CREATE TABLE public.drink_orders (
         CHECK (sugar IN ('無糖', '微糖', '半糖', '少糖', '全糖')),
     CONSTRAINT drink_orders_ice_check
         CHECK (ice IN ('去冰', '微冰', '少冰', '正常冰', '溫', '熱')),
+    CONSTRAINT drink_orders_order_no_check CHECK (
+        order_no IS NULL
+        OR order_no ~ '^[0-9]{6}-[0-9A-HJ-NP-Z]{4}$'
+    ),
     CONSTRAINT drink_orders_status_check
         CHECK (status IN ('待製作', '製作中', '已完成'))
 );
+
+-- 依訂單編號查詢同一張訂單時使用。
+CREATE INDEX drink_orders_order_no_idx ON public.drink_orders (order_no);
 
 -- GRANT：不依賴專案的自動授權；先清除新表可能繼承的預設資料表權限。
 -- PUBLIC 代表全部角色，與 public 結構描述不同；本示範僅授權未登入的 anon。
@@ -56,7 +65,7 @@ REVOKE ALL PRIVILEGES ON TABLE public.drink_orders FROM PUBLIC, anon, authentica
 GRANT USAGE ON SCHEMA public TO anon;
 GRANT SELECT ON TABLE public.drink_orders TO anon;
 -- 欄位層級 INSERT 僅開放表單輸入：不能自行指定 id、created_at 或 status。
-GRANT INSERT (customer_name, drink, sugar, ice, amount, quantity, note)
+GRANT INSERT (customer_name, drink, sugar, ice, amount, quantity, note, order_no)
     ON TABLE public.drink_orders TO anon;
 -- 不授予 UPDATE、DELETE、TRUNCATE 或其他資料表權限。
 

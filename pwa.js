@@ -56,6 +56,8 @@
   const formHasInput = () => {
     const form = document.querySelector('#order-form');
     if (!form) return false;
+    // 已加入「已點飲品」但尚未完成訂單的項目也算未送出的內容。
+    if (Number(form.dataset.cartCount) > 0) return true;
     return ['customer_name', 'drink', 'amount', 'note'].some(name => {
       const field = form.elements[name];
       return field && String(field.value || '').trim() !== '';
