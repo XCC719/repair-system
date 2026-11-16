@@ -39,9 +39,11 @@ const server = http.createServer((req, res) => {
       if (route.request().method() === 'POST') {
         writes++;
         lastPayload = JSON.parse(route.request().postData());
-        const { note, ...required } = lastPayload;
-        assert.deepEqual(Object.keys(required).sort(), ['amount', 'customer_name', 'drink', 'ice', 'quantity', 'sugar']);
-        assert(!('status' in lastPayload));
+        // A whole order is sent as one array insert; every row has the same columns.
+        assert(Array.isArray(lastPayload) && lastPayload.length > 0);
+        for (const row of lastPayload) {
+          assert.deepEqual(Object.keys(row).sort(), ['amount', 'customer_name', 'drink', 'ice', 'note', 'quantity', 'sugar']);
+        }
       } else reads++;
       if (fail) return route.abort();
       return route.fulfill({ json: ['待製作','製作中','已完成'].map((status, id) => ({ id, status, drink: ['紅茶','珍珠奶茶','拿鐵'][id],
@@ -101,35 +103,99 @@ const server = http.createServer((req, res) => {
     await page.locator('#refresh-button').click();
     await page.waitForSelector('.order-card');
     assert.equal(writes, 0);
+    const text = selector => page.locator(selector).innerText();
+    const dialogOpen = () => page.evaluate(() => document.querySelector('#summary-dialog').open);
     await page.locator('[name=customer_name]').fill('示範使用者（虛構）');
     await page.locator('[name=drink]').fill('珍珠奶茶');
     // Amount is required and must be a whole number in range.
     await page.locator('#submit-button').click();
-    assert.equal(writes, 0);
+    assert.equal(await dialogOpen(), false);
+    await page.locator('#next-button').click();
+    assert.equal(await page.locator('#cart').isHidden(), true);
     await page.locator('[name=amount]').fill('0');
     await page.evaluate(() => document.querySelector('#order-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
-    assert.equal(writes, 0);
+    assert.equal(await dialogOpen(), false);
     await page.locator('[name=amount]').fill('65');
     await page.locator('[name=quantity]').fill('2');
-    assert.match(await page.locator('#subtotal').innerText(), /NT\$65 × 2 杯 = NT\$130/);
-    await page.locator('#submit-button').click();
-    await page.waitForFunction(() => document.querySelector('#form-message').textContent.includes('成功送出'));
-    assert.equal(writes, 1);
-    assert.deepEqual(lastPayload, { customer_name: '示範使用者（虛構）', drink: '珍珠奶茶', sugar: '半糖', ice: '少冰', amount: 65, quantity: 2 });
-    assert.equal(await page.locator('[name=customer_name]').inputValue(), '');
+    assert.match(await text('#subtotal'), /NT\$65 × 2 杯 = NT\$130/);
+    // 「新增下一筆飲品」 stores this drink and opens a fresh page for the next one.
+    assert.equal(await text('#item-title'), '第 1 杯');
+    await page.locator('#next-button').click();
+    assert.equal(await text('#item-title'), '第 2 杯');
+    assert.equal(await page.locator('.cart-item').count(), 1);
+    assert.match(await text('#cart-total'), /1 項、2 杯，小計 NT\$130/);
+    assert.equal(await page.locator('[name=customer_name]').inputValue(), '示範使用者（虛構）');
+    assert.equal(await page.locator('[name=drink]').inputValue(), '');
     assert.equal(await page.locator('[name=amount]').inputValue(), '');
     assert.equal(await page.locator('[name=quantity]').inputValue(), '1');
-    assert.match(await page.locator('#subtotal').innerText(), /請輸入金額與數量/);
-    await page.locator('[name=customer_name]').fill('示範使用者（虛構）');
+    assert.equal(await page.locator('[name=sugar]:checked').inputValue(), '半糖');
+    assert.equal(await page.locator('[name=ice]:checked').inputValue(), '少冰');
     await page.locator('[name=drink]').fill('  四季春青茶  ');
     await page.locator('[value=溫]').check();
     await page.locator('[value=無糖]').check();
     await page.locator('[name=amount]').fill('80');
     await page.locator('[name=note]').fill('  燕麥奶  ');
+    await page.locator('#next-button').click();
+    assert.equal(await text('#item-title'), '第 3 杯');
+    assert.match(await text('#cart-total'), /2 項、3 杯，小計 NT\$210/);
+    await page.locator('[name=drink]').fill('紅茶');
+    await page.locator('[name=amount]').fill('30');
+    // 「完成訂單」 opens a confirmation page with the automatic total, and sends nothing yet.
     await page.locator('#submit-button').click();
-    await page.waitForFunction(() => document.querySelector('#form-message').textContent.includes('成功送出') && !document.querySelector('[name=customer_name]').value);
+    assert.equal(await dialogOpen(), true);
+    assert.equal(await page.locator('.summary-item').count(), 3);
+    assert.equal(await text('#summary-total'), 'NT$240');
+    assert.equal(await text('#summary-count'), '3 項、4 杯');
+    assert.equal(writes, 0);
+    // 「返回修改」 keeps everything, and the current drink is not added twice.
+    await page.locator('#summary-back').click();
+    assert.equal(await dialogOpen(), false);
+    assert.equal(await page.locator('.cart-item').count(), 2);
+    assert.equal(await page.locator('[name=drink]').inputValue(), '紅茶');
+    // A failed send keeps the order; retrying sends it once.
+    await page.locator('#submit-button').click();
+    fail = true;
+    await page.locator('#summary-confirm').click();
+    await page.waitForFunction(() => document.querySelector('#summary-message').textContent.includes('送出失敗'));
+    assert.equal(await dialogOpen(), true);
+    assert.equal(await page.locator('.cart-item').count(), 2);
+    fail = false;
+    await page.locator('#summary-confirm').click();
+    await page.waitForFunction(() => document.querySelector('#form-message').textContent.includes('成功送出'));
     assert.equal(writes, 2);
-    assert.deepEqual(lastPayload, { customer_name: '示範使用者（虛構）', drink: '四季春青茶', sugar: '無糖', ice: '溫', amount: 80, quantity: 1, note: '燕麥奶' });
+    assert.deepEqual(lastPayload, [
+      { customer_name: '示範使用者（虛構）', drink: '珍珠奶茶', sugar: '半糖', ice: '少冰', amount: 65, quantity: 2, note: null },
+      { customer_name: '示範使用者（虛構）', drink: '四季春青茶', sugar: '無糖', ice: '溫', amount: 80, quantity: 1, note: '燕麥奶' },
+      { customer_name: '示範使用者（虛構）', drink: '紅茶', sugar: '半糖', ice: '少冰', amount: 30, quantity: 1, note: null }
+    ]);
+    assert.match(await text('#form-message'), /共 3 項、4 杯，合計 NT\$240/);
+    assert.equal(await dialogOpen(), false);
+    assert.equal(await page.locator('#cart').isHidden(), true);
+    assert.equal(await text('#item-title'), '第 1 杯');
+    assert.equal(await page.locator('[name=customer_name]').inputValue(), '');
+    assert.equal(await page.locator('[name=drink]').inputValue(), '');
+    assert.match(await text('#subtotal'), /請輸入金額與數量/);
+    // Removing a drink from the list, then finishing with an empty current page.
+    await page.locator('[name=customer_name]').fill('示範使用者（虛構）');
+    await page.locator('[name=drink]').fill('綠茶');
+    await page.locator('[name=amount]').fill('25');
+    await page.locator('#next-button').click();
+    await page.locator('.cart-remove').click();
+    assert.equal(await page.locator('#cart').isHidden(), true);
+    assert.equal(await text('#item-title'), '第 1 杯');
+    await page.locator('#submit-button').click();
+    assert.equal(await dialogOpen(), false);
+    await page.locator('[name=drink]').fill('烏龍茶');
+    await page.locator('[name=amount]').fill('35');
+    await page.locator('#next-button').click();
+    await page.locator('#submit-button').click();
+    assert.equal(await page.locator('.summary-item').count(), 1);
+    assert.equal(await text('#summary-total'), 'NT$35');
+    assert.equal(await text('#summary-count'), '1 項、1 杯');
+    await page.locator('#summary-confirm').click();
+    await page.waitForFunction(() => document.querySelector('#form-message').textContent.includes('成功送出') && !document.querySelector('[name=customer_name]').value);
+    assert.equal(writes, 3);
+    assert.deepEqual(lastPayload, [{ customer_name: '示範使用者（虛構）', drink: '烏龍茶', sugar: '半糖', ice: '少冰', amount: 35, quantity: 1, note: null }]);
     // Other applications' caches must survive this worker's activation.
     await page.evaluate(async () => {
       const cache = await caches.open('unrelated-app');
@@ -171,8 +237,8 @@ const server = http.createServer((req, res) => {
     await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
     await page.waitForFunction(() => document.querySelector('#list-message').textContent.includes('重新載入頁面'));
     assert.equal(await page.locator('#submit-button').isDisabled(), true);
-    assert.equal(writes, 2);
-    console.log('PASS: subpath manifest/installability, SW shell cache, offline reload, no API cache or queued writes, reconnect, status filters/amount total/error state, amount/quantity validation, payload fields, update banner, mobile layout');
+    assert.equal(writes, 3);
+    console.log('PASS: subpath manifest/installability, SW shell cache, offline reload, no API cache or queued writes, reconnect, status filters/amount total/error state, amount/quantity validation, multi-drink order/total/remove/retry, payload fields, update banner, mobile layout');
     await context.close();
   } finally { await browser.close(); fs.rmSync(profile, { recursive: true, force: true }); }
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => server.close());
