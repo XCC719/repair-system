@@ -1,5 +1,6 @@
 -- 飲料點餐系統：供新的 Supabase 資料庫使用，僅提供檔案，不在本次工作執行。
 -- 本檔採一次性建表；若資料表已存在，應先審查並另寫遷移，不覆寫既有資料。
+-- 已建立的資料庫請改執行 supabase/migrations/ 內尚未執行的遷移檔，不要重複執行本檔。
 -- 原報修系統的 repair_requests 不在本檔處理，是否保留或刪除需另行決定。
 -- 全部步驟置於交易內，日後經授權執行時，避免僅套用部分安全設定。
 BEGIN;
@@ -36,9 +37,11 @@ CREATE TABLE public.drink_orders (
     CONSTRAINT drink_orders_quantity_check CHECK (quantity BETWEEN 1 AND 50),
 
     -- CHECK 第二組：列舉值採需求原文；NOT NULL 另行防止以空值繞過 CHECK。
-    CONSTRAINT drink_orders_drink_check CHECK (drink IN (
-        '紅茶', '綠茶', '烏龍茶', '奶茶', '珍珠奶茶', '檸檬綠茶', '美式咖啡', '拿鐵'
-    )),
+    -- 飲品為手動輸入：最多 50 字且不可只有空白（2026-11-16 起，取代原飲品清單）。
+    CONSTRAINT drink_orders_drink_check CHECK (
+        char_length(drink) BETWEEN 1 AND 50
+        AND drink ~ '[^[:space:]]'
+    ),
     CONSTRAINT drink_orders_sugar_check
         CHECK (sugar IN ('無糖', '微糖', '半糖', '少糖', '全糖')),
     CONSTRAINT drink_orders_ice_check

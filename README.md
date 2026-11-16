@@ -7,7 +7,7 @@
 
 根目錄 `index.html` 為入口，`style.css` 提供手機與桌面樣式，`app.js` 負責驗證、新增及讀取最近 20 筆訂單，`config.js` 放置 Supabase URL 與公開 publishable key。supabase-js v2 由 jsDelivr CDN 載入，無建置步驟。
 
-- 表單欄位：點餐人、飲品、糖份（無糖～全糖）、冰量（去冰～正常冰、熱）、金額、數量、備註（選填）。
+- 表單欄位：點餐人、飲品（手動輸入，最多 50 字）、糖份（無糖～全糖）、冰量（去冰～正常冰、熱）、金額、數量、備註（選填）。
 - 金額為每杯價格，依店家實際價目手動輸入（1～9,999 元整數）；數量 1～50 杯。表單即時顯示「小計＝金額 × 數量」。系統不內建價目表，無法確認輸入的金額是否正確。
 - 清單：最近 20 筆，新的在上面，時間以台北時間顯示；可依製作狀態「全部、待製作、製作中、已完成」篩選（僅篩選已載入的 20 筆），並顯示目前篩選的筆數、杯數與合計金額。
 - 前端只送出 customer_name、drink、sugar、ice、amount、quantity 及有填寫的 note；狀態與下單時間由資料庫產生。
@@ -16,7 +16,7 @@
 
 ## 資料庫
 
-Supabase 須先執行 `supabase/schema.sql` 建立 `drink_orders` 資料表、權限與 RLS（任何人可新增、讀取，不可修改、刪除）。已於 2026-11-16 在正式專案執行；舊的 `repair_requests` 表不受影響。本檔為一次性建表，不可對已存在的資料表重複執行。請勿在前端放入 secret 或 service_role 金鑰。
+Supabase 須先執行 `supabase/schema.sql` 建立 `drink_orders` 資料表、權限與 RLS（任何人可新增、讀取，不可修改、刪除）。之後的變更放在 `supabase/migrations/`，依檔名順序在已建立的資料庫執行；`20261116_drink_free_text.sql` 將飲品限制由固定清單改為手動輸入（1～50 字、不可只有空白）。已於 2026-11-16 在正式專案執行；舊的 `repair_requests` 表不受影響。本檔為一次性建表，不可對已存在的資料表重複執行。請勿在前端放入 secret 或 service_role 金鑰。
 
 ## PWA 安裝與離線介面
 
@@ -42,7 +42,7 @@ Supabase 須先執行 `supabase/schema.sql` 建立 `drink_orders` 資料表、�
 | 3 | 新增訂單（省略備註） | 允許 | 通過（201） |
 | 4 | 金額 0 | 拒絕 | 通過（`drink_orders_amount_check`） |
 | 5 | 數量 51 | 拒絕 | 通過（`drink_orders_quantity_check`） |
-| 6 | 不在清單的飲品 | 拒絕 | 通過（`drink_orders_drink_check`） |
+| 6 | 不在清單的飲品 | 拒絕 | 通過（`drink_orders_drink_check`；飲品改為手動輸入前的規則） |
 | 7 | 備註只有空白 | 拒絕 | 通過（`drink_orders_note_check`） |
 | 8 | 自行指定狀態「已完成」 | 拒絕 | 通過（無權限） |
 | 9 | 修改狀態 | 拒絕 | 通過（無權限） |
