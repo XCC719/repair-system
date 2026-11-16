@@ -24,28 +24,30 @@ const server = http.createServer((req, res) => {
 (async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const url = `http://127.0.0.1:${server.address().port}${prefix}`;
-  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'repair-pwa-test-'));
-  const browser = await chromium.launchPersistentContext(profile, { executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', args: ['--no-sandbox'], viewport: { width: 390, height: 844 } });
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'drink-pwa-test-'));
+  const browser = await chromium.launchPersistentContext(profile, { executablePath: process.env.CHROMIUM_PATH || undefined, args: ['--no-sandbox'], viewport: { width: 390, height: 844 } });
   try {
     const context = browser;
     const page = await context.newPage();
-    let reads = 0, writes = 0, fail = false;
+    let reads = 0, writes = 0, fail = false, lastPayload;
     await context.route('https://cdn.jsdelivr.net/**', route => route.fulfill({
-      contentType: 'application/javascript', body: `window.supabase={createClient:()=>({from:()=>({select:()=>({order(){return this},limit:async()=>{try{return {data:await (await fetch('https://api.example.test/requests')).json()}}catch(error){return {error}}}}),insert:async payload=>{await fetch('https://api.example.test/requests',{method:'POST',body:JSON.stringify(payload)});return {}}})})};`
+      contentType: 'application/javascript', body: `window.supabase={createClient:()=>({from:()=>({select:()=>({order(){return this},limit:async()=>{try{return {data:await (await fetch('https://api.example.test/orders')).json()}}catch(error){return {error}}}}),insert:async payload=>{await fetch('https://api.example.test/orders',{method:'POST',body:JSON.stringify(payload)});return {}}})})};`
     }));
-    await context.route('https://api.example.test/requests', route => {
+    await context.route('https://api.example.test/orders', route => {
       if (route.request().method() === 'POST') {
         writes++;
-        assert.deepEqual(Object.keys(JSON.parse(route.request().postData())).sort(),
-          ['category', 'description', 'location', 'reporter_name', 'urgency']);
+        lastPayload = JSON.parse(route.request().postData());
+        const { note, ...required } = lastPayload;
+        assert.deepEqual(Object.keys(required).sort(), ['amount', 'customer_name', 'drink', 'ice', 'quantity', 'sugar']);
+        assert(!('status' in lastPayload));
       } else reads++;
       if (fail) return route.abort();
-      return route.fulfill({ json: ['高','中','低'].map((urgency, id) => ({ id, urgency, location: '示範辦公室（虛構）',
-        category: '設備', description: '示範內容', reporter_name: '示範使用者', status: '待處理', created_at: '2026-11-11T00:00:00Z' })) });
+      return route.fulfill({ json: ['待製作','製作中','已完成'].map((status, id) => ({ id, status, drink: ['紅茶','珍珠奶茶','拿鐵'][id],
+        sugar: '半糖', ice: '少冰', amount: [30, 55, 70][id], quantity: id + 1, note: id ? null : '示範備註', customer_name: '示範使用者', created_at: '2026-11-11T00:00:00Z' })) });
     });
     await page.goto(url);
     await page.waitForFunction(() => navigator.serviceWorker.controller);
-    await page.waitForSelector('.request-card');
+    await page.waitForSelector('.order-card');
     const cdp = await context.newCDPSession(page);
     const manifest = await cdp.send('Page.getAppManifest');
     assert.equal(manifest.errors.length, 0);
@@ -54,15 +56,19 @@ const server = http.createServer((req, res) => {
     assert.equal(new URL(parsed.start_url, url).pathname, prefix);
     const errors = await cdp.send('Page.getInstallabilityErrors');
     assert.deepEqual(errors.installabilityErrors, []);
-    assert.equal(await page.locator('.request-card').count(), 3);
-    await page.locator('[data-urgency-filter="高"]').click();
-    assert.equal(await page.locator('.request-card').count(), 1);
+    assert.equal(await page.locator('.order-card').count(), 3);
+    assert.match(await page.locator('#cup-total').innerText(), /共 3 筆、6 杯，合計 NT\$350/);
+    assert.match(await page.locator('.order-card').nth(1).innerText(), /珍珠奶茶 × 2[\s\S]*NT\$110[\s\S]*每杯 NT\$55/);
+    assert.equal(await page.locator('.order-note').count(), 1);
+    await page.locator('[data-status-filter="已完成"]').click();
+    assert.equal(await page.locator('.order-card').count(), 1);
+    assert.match(await page.locator('#cup-total').innerText(), /「已完成」共 1 筆、3 杯，合計 NT\$210/);
     assert.equal(reads, 1);
     fail = true;
     await page.locator('#refresh-button').click();
-    await page.waitForFunction(() => document.querySelector('#list-message').textContent.includes('無法載入清單'));
-    await page.locator('[data-urgency-filter="中"]').click();
-    assert.match(await page.locator('#list-message').innerText(), /無法載入清單/);
+    await page.waitForFunction(() => document.querySelector('#list-message').textContent.includes('無法載入訂單'));
+    await page.locator('[data-status-filter="製作中"]').click();
+    assert.match(await page.locator('#list-message').innerText(), /無法載入訂單/);
     fail = false;
     const cachedURLs = await page.evaluate(async () => {
       const names = await caches.keys();
@@ -76,13 +82,13 @@ const server = http.createServer((req, res) => {
     await cdp.send('Network.enable');
     await cdp.send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
     await page.waitForFunction(() => document.querySelector('#submit-button').disabled);
-    await page.locator('[name=reporter_name]').fill('離線測試（虛構）');
-    await page.evaluate(() => document.querySelector('#repair-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    await page.locator('[name=customer_name]').fill('離線測試（虛構）');
+    await page.evaluate(() => document.querySelector('#order-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
     assert.equal(writes, 0);
     assert.match(await page.locator('#form-message').innerText(), /尚未送出/);
     await page.reload();
     await page.waitForSelector('#connection-message:not([hidden])');
-    assert.equal(await page.locator('.request-card').count(), 0);
+    assert.equal(await page.locator('.order-card').count(), 0);
     assert.equal(await page.locator('#refresh-button').isDisabled(), true);
     assert.match(await page.locator('#list-message').innerText(), /目前離線/);
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
@@ -91,16 +97,37 @@ const server = http.createServer((req, res) => {
     await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
     await page.waitForFunction(() => !document.querySelector('#refresh-button').disabled);
     await page.locator('#refresh-button').click();
-    await page.waitForSelector('.request-card');
+    await page.waitForSelector('.order-card');
     assert.equal(writes, 0);
-    await page.locator('[name=reporter_name]').fill('示範使用者（虛構）');
-    await page.locator('[name=location]').fill('示範辦公室（虛構）');
-    await page.locator('[name=category]').selectOption('設備');
-    await page.locator('[name=description]').fill('連線恢復後的虛構報修');
+    await page.locator('[name=customer_name]').fill('示範使用者（虛構）');
+    await page.locator('[name=drink]').selectOption('珍珠奶茶');
+    // Amount is required and must be a whole number in range.
     await page.locator('#submit-button').click();
-    await page.waitForFunction(() => document.querySelector('#form-message').textContent.includes('成功登記'));
+    assert.equal(writes, 0);
+    await page.locator('[name=amount]').fill('0');
+    await page.evaluate(() => document.querySelector('#order-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    assert.equal(writes, 0);
+    await page.locator('[name=amount]').fill('65');
+    await page.locator('[name=quantity]').fill('2');
+    assert.match(await page.locator('#subtotal').innerText(), /NT\$65 × 2 杯 = NT\$130/);
+    await page.locator('#submit-button').click();
+    await page.waitForFunction(() => document.querySelector('#form-message').textContent.includes('成功送出'));
     assert.equal(writes, 1);
-    assert.equal(await page.locator('[name=reporter_name]').inputValue(), '');
+    assert.deepEqual(lastPayload, { customer_name: '示範使用者（虛構）', drink: '珍珠奶茶', sugar: '半糖', ice: '少冰', amount: 65, quantity: 2 });
+    assert.equal(await page.locator('[name=customer_name]').inputValue(), '');
+    assert.equal(await page.locator('[name=amount]').inputValue(), '');
+    assert.equal(await page.locator('[name=quantity]').inputValue(), '1');
+    assert.match(await page.locator('#subtotal').innerText(), /請輸入金額與數量/);
+    await page.locator('[name=customer_name]').fill('示範使用者（虛構）');
+    await page.locator('[name=drink]').selectOption('拿鐵');
+    await page.locator('[value=熱]').check();
+    await page.locator('[value=無糖]').check();
+    await page.locator('[name=amount]').fill('80');
+    await page.locator('[name=note]').fill('  燕麥奶  ');
+    await page.locator('#submit-button').click();
+    await page.waitForFunction(() => document.querySelector('#form-message').textContent.includes('成功送出') && !document.querySelector('[name=customer_name]').value);
+    assert.equal(writes, 2);
+    assert.deepEqual(lastPayload, { customer_name: '示範使用者（虛構）', drink: '拿鐵', sugar: '無糖', ice: '熱', amount: 80, quantity: 1, note: '燕麥奶' });
     // Other applications' caches must survive this worker's activation.
     await page.evaluate(async () => {
       const cache = await caches.open('unrelated-app');
@@ -114,13 +141,13 @@ const server = http.createServer((req, res) => {
     await page.reload();
     await page.waitForSelector('#connection-message:not([hidden])');
     assert.equal(await page.locator('#submit-button').isDisabled(), true);
-    assert.equal(await page.locator('.request-card').count(), 0);
+    assert.equal(await page.locator('.order-card').count(), 0);
     await context.setOffline(false);
     await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
     await page.waitForFunction(() => document.querySelector('#list-message').textContent.includes('重新載入頁面'));
     assert.equal(await page.locator('#submit-button').isDisabled(), true);
-    assert.equal(writes, 1);
-    console.log('PASS: subpath manifest/installability, SW shell cache, offline reload, no API cache or queued writes, reconnect, filters/error state, mobile layout');
+    assert.equal(writes, 2);
+    console.log('PASS: subpath manifest/installability, SW shell cache, offline reload, no API cache or queued writes, reconnect, status filters/amount total/error state, amount/quantity validation, payload fields, mobile layout');
     await context.close();
   } finally { await browser.close(); fs.rmSync(profile, { recursive: true, force: true }); }
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => server.close());
