@@ -9,13 +9,22 @@
   const list = document.querySelector('#order-list');
   const filterButtons = document.querySelectorAll('[data-status-filter]');
   const SUBMIT_LABEL = '送出訂單 ↗';
-  // 價目須與 supabase/schema.sql 的 drink_orders_price_check 一致（虛構價格）。
-  const PRICES = Object.freeze({ 紅茶: 30, 綠茶: 30, 烏龍茶: 35, 奶茶: 45, 珍珠奶茶: 55, 檸檬綠茶: 50, 美式咖啡: 60, 拿鐵: 70 });
-  const drinkSelect = form.elements.drink;
-  const amountInput = form.elements.amount;
+  // 金額（每杯）與數量由點餐人依實際價目輸入；範圍須與 supabase/schema.sql 的 CHECK 一致。
+  const AMOUNT_MAX = 9999;
+  const QUANTITY_MAX = 50;
+  const subtotal = document.querySelector('#subtotal');
   const money = value => `NT$${Number(value).toLocaleString('zh-TW')}`;
-  const updateAmount = () => { amountInput.value = PRICES[drinkSelect.value] ? money(PRICES[drinkSelect.value]) : ''; };
-  drinkSelect.addEventListener('change', updateAmount);
+  const wholeNumber = (value, max) => {
+    const raw = String(value || '').trim();
+    const number = Number(raw);
+    return raw !== '' && Number.isInteger(number) && number >= 1 && number <= max ? number : null;
+  };
+  const updateSubtotal = () => {
+    const amount = wholeNumber(form.elements.amount.value, AMOUNT_MAX);
+    const quantity = wholeNumber(form.elements.quantity.value, QUANTITY_MAX);
+    subtotal.textContent = amount && quantity ? `小計：${money(amount)} × ${quantity} 杯 = ${money(amount * quantity)}` : '小計：請輸入金額與數量';
+  };
+  form.addEventListener('input', updateSubtotal);
   let orders = [];
   let selectedStatus = '全部';
   let hasLoaded = false;
@@ -48,17 +57,20 @@
     const cards = visibleOrders.map(order => {
       const card = element('li', 'order-card', '');
       const top = element('div', 'order-top', '');
-      top.append(element('h3', '', order.drink),
-        element('span', 'badge amount', money(order.amount)),
+      top.append(element('h3', '', `${order.drink} × ${order.quantity}`),
+        element('span', 'badge amount', money(order.amount * order.quantity)),
         element('span', 'badge', order.sugar),
         element('span', 'badge', order.ice),
         element('span', `badge status ${statusClass(order.status)}`, order.status));
-      card.append(top, element('div', 'order-meta', `${order.customer_name} · ${formatTime(order.created_at)}`));
+      card.append(top);
+      if (order.note) card.append(element('p', 'order-note', `備註：${order.note}`));
+      card.append(element('div', 'order-meta', `${order.customer_name} · 每杯 ${money(order.amount)} · ${formatTime(order.created_at)}`));
       return card;
     });
     list.replaceChildren(...cards);
-    const total = visibleOrders.reduce((sum, order) => sum + (Number(order.amount) || 0), 0);
-    cupTotal.textContent = `${selectedStatus === '全部' ? '' : `「${selectedStatus}」`}共 ${cards.length} 杯，合計 ${money(total)}`;
+    const cups = visibleOrders.reduce((sum, order) => sum + (Number(order.quantity) || 0), 0);
+    const total = visibleOrders.reduce((sum, order) => sum + (Number(order.amount) || 0) * (Number(order.quantity) || 0), 0);
+    cupTotal.textContent = `${selectedStatus === '全部' ? '' : `「${selectedStatus}」`}共 ${cards.length} 筆、${cups} 杯，合計 ${money(total)}`;
     cupTotal.hidden = !cards.length;
     showMessage(listMessage, !navigator.onLine ? '目前離線，無法取得最新訂單。已顯示的紀錄僅保留於本次開啟的頁面。'
       : loading ? '正在載入訂單…'
@@ -87,7 +99,7 @@
     showMessage(listMessage, '正在載入訂單…');
     try {
       const { data, error } = await client.from('drink_orders')
-        .select('id,customer_name,drink,sugar,ice,amount,status,created_at')
+        .select('id,customer_name,drink,sugar,ice,amount,quantity,note,status,created_at')
         .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(20);
       if (error) throw error;
       orders = data || [];
@@ -117,11 +129,19 @@
       showMessage(formMessage, '請完整填寫所有欄位，內容不可只有空白。', 'error');
       return;
     }
-    if (!PRICES[payload.drink]) {
-      showMessage(formMessage, '請從清單選擇飲品，才能計算金額。', 'error');
+    const amount = wholeNumber(values.get('amount'), AMOUNT_MAX);
+    if (!amount) {
+      showMessage(formMessage, `金額須為 1 到 ${AMOUNT_MAX} 元的整數（每杯價格）。`, 'error');
       return;
     }
-    payload.amount = PRICES[payload.drink];
+    const quantity = wholeNumber(values.get('quantity'), QUANTITY_MAX);
+    if (!quantity) {
+      showMessage(formMessage, `數量須為 1 到 ${QUANTITY_MAX} 杯的整數。`, 'error');
+      return;
+    }
+    Object.assign(payload, { amount, quantity });
+    const note = text('note');
+    if (note) payload.note = note;
     submitting = true;
     submitButton.disabled = true;
     submitButton.textContent = '正在送出…';
@@ -130,7 +150,7 @@
       const { error } = await client.from('drink_orders').insert(payload);
       if (error) throw error;
       form.reset();
-      updateAmount();
+      updateSubtotal();
       showMessage(formMessage, '訂單已成功送出！飲料準備中，請留意清單狀態。', 'success');
       await loadOrders();
     } catch (error) {
@@ -155,6 +175,7 @@
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
       global: { fetch: (url, options = {}) => fetch(url, { ...options, signal: AbortSignal.timeout(20000) }) }
     });
+    updateSubtotal();
     updateConnection();
     loadOrders();
   } catch {

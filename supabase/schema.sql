@@ -4,8 +4,10 @@
 -- 全部步驟置於交易內，日後經授權執行時，避免僅套用部分安全設定。
 BEGIN;
 
--- 建立點餐資料表：一筆即一杯；識別碼與下單時間由資料庫自動產生。
--- 表單欄位：點餐人 customer_name、飲品 drink、糖份 sugar、冰量 ice、金額 amount（新台幣整數）。
+-- 建立點餐資料表：識別碼與下單時間由資料庫自動產生。
+-- 表單欄位：點餐人 customer_name、飲品 drink、糖份 sugar、冰量 ice、
+-- 金額 amount（每杯價格，新台幣整數，依實際價目手動輸入）、數量 quantity、備註 note（選填）。
+-- 小計 = amount × quantity，由前端顯示，不另存欄位。
 -- 時間以含時區型態儲存；前端依所需時區顯示。
 CREATE TABLE public.drink_orders (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -15,28 +17,34 @@ CREATE TABLE public.drink_orders (
     sugar text NOT NULL DEFAULT '半糖',
     ice text NOT NULL DEFAULT '少冰',
     amount integer NOT NULL,
+    quantity integer NOT NULL DEFAULT 1,
+    note text,
     status text NOT NULL DEFAULT '待製作',
 
-    -- CHECK 第一組：姓名長度上限 100 字（設計選擇，待確認），並拒絕只有空白字元的輸入。
+    -- CHECK 第一組：文字長度與數值範圍（設計選擇，待確認），並拒絕只有空白字元的輸入。
     CONSTRAINT drink_orders_customer_name_check CHECK (
         char_length(customer_name) BETWEEN 1 AND 100
         AND customer_name ~ '[^[:space:]]'
     ),
+    -- 備註可省略（NULL）；若有填寫則最多 200 字且不可只有空白。
+    CONSTRAINT drink_orders_note_check CHECK (
+        note IS NULL
+        OR (char_length(note) BETWEEN 1 AND 200 AND note ~ '[^[:space:]]')
+    ),
+    -- 金額為手動輸入，資料庫只檢查合理範圍，無法確認是否符合店家價目。
+    CONSTRAINT drink_orders_amount_check CHECK (amount BETWEEN 1 AND 9999),
+    CONSTRAINT drink_orders_quantity_check CHECK (quantity BETWEEN 1 AND 50),
 
     -- CHECK 第二組：列舉值採需求原文；NOT NULL 另行防止以空值繞過 CHECK。
+    CONSTRAINT drink_orders_drink_check CHECK (drink IN (
+        '紅茶', '綠茶', '烏龍茶', '奶茶', '珍珠奶茶', '檸檬綠茶', '美式咖啡', '拿鐵'
+    )),
     CONSTRAINT drink_orders_sugar_check
         CHECK (sugar IN ('無糖', '微糖', '半糖', '少糖', '全糖')),
     CONSTRAINT drink_orders_ice_check
         CHECK (ice IN ('去冰', '微冰', '少冰', '正常冰', '熱')),
     CONSTRAINT drink_orders_status_check
-        CHECK (status IN ('待製作', '製作中', '已完成')),
-
-    -- CHECK 第三組：飲品與金額必須符合價目表（虛構價格），防止前端竄改金額。
-    -- 價目須與 app.js 的 PRICES 一致；調整價格時兩處同步修改。
-    CONSTRAINT drink_orders_price_check CHECK ((drink, amount) IN (
-        ('紅茶', 30), ('綠茶', 30), ('烏龍茶', 35), ('奶茶', 45),
-        ('珍珠奶茶', 55), ('檸檬綠茶', 50), ('美式咖啡', 60), ('拿鐵', 70)
-    ))
+        CHECK (status IN ('待製作', '製作中', '已完成'))
 );
 
 -- GRANT：不依賴專案的自動授權；先清除新表可能繼承的預設資料表權限。
@@ -45,7 +53,7 @@ REVOKE ALL PRIVILEGES ON TABLE public.drink_orders FROM PUBLIC, anon, authentica
 GRANT USAGE ON SCHEMA public TO anon;
 GRANT SELECT ON TABLE public.drink_orders TO anon;
 -- 欄位層級 INSERT 僅開放表單輸入：不能自行指定 id、created_at 或 status。
-GRANT INSERT (customer_name, drink, sugar, ice, amount)
+GRANT INSERT (customer_name, drink, sugar, ice, amount, quantity, note)
     ON TABLE public.drink_orders TO anon;
 -- 不授予 UPDATE、DELETE、TRUNCATE 或其他資料表權限。
 
