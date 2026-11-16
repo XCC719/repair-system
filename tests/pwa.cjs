@@ -7,6 +7,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const prefix = '/repair-system/';
+// Appended to sw.js to simulate deploying a new release while a page is open.
+let swRelease = '';
 const server = http.createServer((req, res) => {
   const pathname = new URL(req.url, 'http://localhost').pathname;
   if (!pathname.startsWith(prefix)) { res.writeHead(404).end(); return; }
@@ -18,7 +20,7 @@ const server = http.createServer((req, res) => {
   fs.readFile(file, (error, content) => {
     if (error) { res.writeHead(404).end(); return; }
     res.setHeader('Content-Type', mime[path.extname(file)] || 'application/octet-stream');
-    res.end(content);
+    res.end(relative === 'sw.js' && swRelease ? Buffer.concat([content, Buffer.from(swRelease)]) : content);
   });
 });
 (async () => {
@@ -100,7 +102,7 @@ const server = http.createServer((req, res) => {
     await page.waitForSelector('.order-card');
     assert.equal(writes, 0);
     await page.locator('[name=customer_name]').fill('示範使用者（虛構）');
-    await page.locator('[name=drink]').selectOption('珍珠奶茶');
+    await page.locator('[name=drink]').fill('珍珠奶茶');
     // Amount is required and must be a whole number in range.
     await page.locator('#submit-button').click();
     assert.equal(writes, 0);
@@ -119,15 +121,15 @@ const server = http.createServer((req, res) => {
     assert.equal(await page.locator('[name=quantity]').inputValue(), '1');
     assert.match(await page.locator('#subtotal').innerText(), /請輸入金額與數量/);
     await page.locator('[name=customer_name]').fill('示範使用者（虛構）');
-    await page.locator('[name=drink]').selectOption('拿鐵');
-    await page.locator('[value=熱]').check();
+    await page.locator('[name=drink]').fill('  四季春青茶  ');
+    await page.locator('[value=溫]').check();
     await page.locator('[value=無糖]').check();
     await page.locator('[name=amount]').fill('80');
     await page.locator('[name=note]').fill('  燕麥奶  ');
     await page.locator('#submit-button').click();
     await page.waitForFunction(() => document.querySelector('#form-message').textContent.includes('成功送出') && !document.querySelector('[name=customer_name]').value);
     assert.equal(writes, 2);
-    assert.deepEqual(lastPayload, { customer_name: '示範使用者（虛構）', drink: '拿鐵', sugar: '無糖', ice: '熱', amount: 80, quantity: 1, note: '燕麥奶' });
+    assert.deepEqual(lastPayload, { customer_name: '示範使用者（虛構）', drink: '四季春青茶', sugar: '無糖', ice: '溫', amount: 80, quantity: 1, note: '燕麥奶' });
     // Other applications' caches must survive this worker's activation.
     await page.evaluate(async () => {
       const cache = await caches.open('unrelated-app');
@@ -135,6 +137,29 @@ const server = http.createServer((req, res) => {
     });
     await page.reload();
     assert(await page.evaluate(async () => (await caches.keys()).includes('unrelated-app')));
+    // New release: the page shows an update banner instead of reloading by itself.
+    assert.equal(await page.locator('#update-banner').isHidden(), true);
+    swRelease = '\n// simulated release 2\n';
+    await page.locator('[name=customer_name]').fill('更新前填寫（虛構）');
+    await page.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
+    await page.waitForSelector('#update-banner:not([hidden])');
+    assert.match(await page.locator('#update-text').innerText(), /新版本/);
+    assert.equal(await page.locator('[name=customer_name]').inputValue(), '更新前填寫（虛構）');
+    // Cancelling the confirmation keeps the unsent form and the banner.
+    page.once('dialog', dialog => dialog.dismiss());
+    await page.locator('#update-button').click();
+    assert.equal(await page.locator('[name=customer_name]').inputValue(), '更新前填寫（虛構）');
+    assert.equal(await page.locator('#update-banner').isVisible(), true);
+    assert.equal(await page.locator('#update-button').isDisabled(), false);
+    // Confirming activates the waiting worker and reloads once.
+    page.once('dialog', dialog => dialog.accept());
+    await page.evaluate(() => { window.__beforeUpdate = true; });
+    await Promise.all([page.waitForEvent('load'), page.locator('#update-button').click()]);
+    await page.waitForFunction(() => navigator.serviceWorker.controller);
+    assert.equal(await page.evaluate(() => window.__beforeUpdate), undefined);
+    assert.equal(await page.locator('#update-banner').isHidden(), true);
+    assert.equal(await page.locator('[name=customer_name]').inputValue(), '');
+    assert.equal(await page.evaluate(async () => !(await navigator.serviceWorker.getRegistration()).waiting), true);
     await context.route('https://cdn.jsdelivr.net/**', route => route.abort());
     await context.setOffline(true);
     await cdp.send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
@@ -147,7 +172,7 @@ const server = http.createServer((req, res) => {
     await page.waitForFunction(() => document.querySelector('#list-message').textContent.includes('重新載入頁面'));
     assert.equal(await page.locator('#submit-button').isDisabled(), true);
     assert.equal(writes, 2);
-    console.log('PASS: subpath manifest/installability, SW shell cache, offline reload, no API cache or queued writes, reconnect, status filters/amount total/error state, amount/quantity validation, payload fields, mobile layout');
+    console.log('PASS: subpath manifest/installability, SW shell cache, offline reload, no API cache or queued writes, reconnect, status filters/amount total/error state, amount/quantity validation, payload fields, update banner, mobile layout');
     await context.close();
   } finally { await browser.close(); fs.rmSync(profile, { recursive: true, force: true }); }
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => server.close());

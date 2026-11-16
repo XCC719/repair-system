@@ -4,7 +4,7 @@
 
 本儲存庫收錄一套虛構飲料點餐系統（原為報修登記系統）。根目錄下的 `點餐需求筆記.txt` 記載點餐表單、訂單清單、欄位、存取規則及待確認事項。示範範圍如有經核准的變更，請同步更新筆記。新增任何元件時，請在本指南記錄其位置。`文件/` 內的 Excel、PowerPoint、Word 仍為報修版，尚未改寫為點餐內容。
 
-`supabase/schema.sql` 是 `drink_orders` 的一次性建表與 GRANT、RLS、CHECK 設計檔，已於 2026-11-16 在正式專案執行；之後的資料表變更請另寫遷移，不要重複執行此檔。
+`supabase/schema.sql` 是 `drink_orders` 的一次性建表與 GRANT、RLS、CHECK 設計檔，已於 2026-11-16 在正式專案執行；之後的資料表變更請另寫遷移，放在 `supabase/migrations/`（檔名以日期開頭），並同步更新 `schema.sql` 供新資料庫使用；不要重複執行 `schema.sql`。
 
 ## 本機開發與檢查
 
@@ -31,5 +31,5 @@
 ## PWA 元件與驗證
 
 - `manifest.webmanifest`、`icons/` 為安裝資訊與圖示；`pwa.js` 負責安裝提示、連線狀態與 Service Worker 註冊，`sw.js` 僅快取靜態介面，不快取訂單資料或 POST。
-- 修改快取檔案時遞增 `sw.js` 快取版本；新版等待舊頁面關閉後啟用，不強制重新載入表單。
+- 修改快取檔案時遞增 `sw.js` 快取版本；新版等待舊頁面關閉後啟用，或由使用者按 `pwa.js` 顯示的「立即更新」提示後啟用（`SKIP_WAITING` 訊息），不自動重新載入表單。
 - `tests/pwa.cjs` 為 Playwright 瀏覽器回歸測試，自啟本機伺服器、使用虛構 API；執行 `node tests/pwa.cjs`（需 Playwright 與 Chromium，可設 `CHROMIUM_PATH`）。語法檢查另加 `node --check pwa.js`、`node --check sw.js`。
